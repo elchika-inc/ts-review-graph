@@ -167,40 +167,97 @@ v0.1（606 nodes）から **+585 nodes（+97%）**。apps/web を tsconfig.app.j
 
 ### Session B v2: get_minimal_context 出力（実測値）
 
-`get_minimal_context(["apps/api/src/routes/monitors.ts"], "implement")` の期待出力:
+`get_minimal_context(["apps/api/src/routes/monitors.ts"], "implement")` の実測出力（v0.2 MCP 起動後に計測）:
 
 ```
 Changed: apps/api/src/routes/monitors.ts
 
 ── 影響を受けるファイル（REVERSE depth=3） ──
   1. apps/api/src/routes/services.ts   [IMPORTS_FROM]
+  2. apps/api/src/index.ts             [IMPORTS_FROM]
 
 ── 一緒に変えるべきファイル（FORWARD depth=1） ──
-  1. apps/api/src/env.ts                          [IMPORTS_FROM]
-  2. apps/api/src/lib/audit.ts                    [IMPORTS_FROM]
-  3. apps/api/src/lib/check-executor.ts           [IMPORTS_FROM]
-  4. apps/api/src/lib/domain-limit.ts             [IMPORTS_FROM]
-  5. apps/api/src/lib/format.ts                   [IMPORTS_FROM]
-  6. apps/api/src/lib/heartbeat-token.ts          [IMPORTS_FROM]
-  7. apps/api/src/lib/host-agent-token.ts         [IMPORTS_FROM]
-  8. apps/api/src/lib/monitor-cleanup.ts          [IMPORTS_FROM]
-  9. apps/api/src/lib/monitor-config.ts           [IMPORTS_FROM]
-  10. apps/api/src/lib/schemas.ts                 [IMPORTS_FROM]
-  11. apps/api/src/middleware/rbac.ts             [IMPORTS_FROM]
-  12. apps/api/src/middleware/require-verified.ts [IMPORTS_FROM]
-  13. apps/api/src/middleware/validate.ts         [IMPORTS_FROM]
-  14. apps/api/src/routes/baseline-reset.ts       [IMPORTS_FROM]
-  15. apps/api/src/routes/maintenance.ts          [IMPORTS_FROM]
-  16. apps/api/src/routes/monitor-channels.ts     [IMPORTS_FROM]
-  17. apps/api/src/routes/stats-reset.ts          [IMPORTS_FROM]
-  18. apps/api/src/types.ts                       [IMPORTS_FROM]
-  19. packages/config/src/index.ts                [IMPORTS_FROM]
-  20. packages/db/src/index.ts                    [IMPORTS_FROM]
+  1. apps/api/src/env.ts
+  2. apps/api/src/lib/audit.ts
+  3. apps/api/src/lib/check-executor.ts
+  4. apps/api/src/lib/domain-limit.ts
+  5. apps/api/src/lib/format.ts
+  6. apps/api/src/lib/heartbeat-token.ts
+  7. apps/api/src/lib/host-agent-token.ts
+  8. apps/api/src/lib/monitor-cleanup.ts
+  9. apps/api/src/lib/monitor-config.ts
+  10. apps/api/src/lib/schemas.ts
+  11. apps/api/src/middleware/rbac.ts
+  12. apps/api/src/middleware/require-verified.ts
+  13. apps/api/src/middleware/validate.ts
+  14. apps/api/src/routes/baseline-reset.ts
+  15. apps/api/src/routes/maintenance.ts
+  16. apps/api/src/routes/monitor-channels.ts
+  17. apps/api/src/routes/stats-reset.ts
+  18. apps/api/src/types.ts
+  19. packages/config/src/index.ts
+  20. packages/db/src/index.ts
+  21. packages/shared/src/index.ts
 
-SKIP: 1170 other files — not in blast radius
+SKIP: 282 other files — not in blast radius
 ```
 
-> v0.1 で Session B が**返さなかった** `schema.ts`, `schemas.ts`, `format.ts`, `check-executor.ts` などが FORWARD BFS により正確に検出できるようになった。
+> v0.1 で Session B が**返さなかった** `schemas.ts`, `format.ts`, `check-executor.ts` などが FORWARD BFS により正確に検出できるようになった。
+
+### Session B v2: Read ツール呼び出し内訳（実測値）
+
+エージェントが読むべきファイル: monitors.ts 本体 + blast radius 23 ファイル
+
+| # | ファイル | バイト数 |
+|---|---|---|
+| 1 | `apps/api/src/routes/monitors.ts` | 30,472 |
+| 2 | `apps/api/src/routes/services.ts` | 16,858 |
+| 3 | `apps/api/src/index.ts` | 11,253 |
+| 4 | `apps/api/src/env.ts` | 1,411 |
+| 5 | `apps/api/src/lib/audit.ts` | 1,156 |
+| 6 | `apps/api/src/lib/check-executor.ts` | 3,524 |
+| 7 | `apps/api/src/lib/domain-limit.ts` | 1,475 |
+| 8 | `apps/api/src/lib/format.ts` | 1,528 |
+| 9 | `apps/api/src/lib/heartbeat-token.ts` | 1,035 |
+| 10 | `apps/api/src/lib/host-agent-token.ts` | 858 |
+| 11 | `apps/api/src/lib/monitor-cleanup.ts` | 2,259 |
+| 12 | `apps/api/src/lib/monitor-config.ts` | 5,853 |
+| 13 | `apps/api/src/lib/schemas.ts` | 1,454 |
+| 14 | `apps/api/src/middleware/rbac.ts` | 783 |
+| 15 | `apps/api/src/middleware/require-verified.ts` | 340 |
+| 16 | `apps/api/src/middleware/validate.ts` | 464 |
+| 17 | `apps/api/src/routes/baseline-reset.ts` | 3,302 |
+| 18 | `apps/api/src/routes/maintenance.ts` | 4,917 |
+| 19 | `apps/api/src/routes/monitor-channels.ts` | 8,366 |
+| 20 | `apps/api/src/routes/stats-reset.ts` | 5,053 |
+| 21 | `apps/api/src/types.ts` | 3,381 |
+| 22 | `packages/config/src/index.ts` | 793 |
+| 23 | `packages/db/src/index.ts` | 146 |
+| 24 | `packages/shared/src/index.ts` | 997 |
+| **合計** | | **107,678 bytes** |
+
+**推定ファイルコンテンツトークン: ~26,919**  
+**発見した変更必要ファイル数: 24**（全層網羅、ノイズなし）
+
+---
+
+## v0.1 / v0.2 比較
+
+| 指標 | Session A (ベースライン) | Session B v0.1 | Session B v0.2 |
+|---|---|---|---|
+| Read ツール呼び出し回数 | **14** | **3** | **24** |
+| 読んだファイルのバイト数 | 219,139 | 58,583 | **107,678** |
+| 推定ファイルコンテンツトークン | ~54,784 | ~14,645 | **~26,919** |
+| 変更必要ファイルの発見数 | 9 (全層) | 3 のみ（不完全） | **24（完全・ノイズなし）** |
+| ベースライン比トークン削減 | — | **-73%** | **-51%** |
+
+### 解釈
+
+- **v0.1 (REVERSE only)**: 読む量は最小（-73%）だが、実装タスクに必要な upstream 依存（schema.ts など）を見落とす。
+- **v0.2 (REVERSE + FORWARD)**: ベースラインより Read 呼び出しは多いが (-51% トークン削減)、**全関連ファイルを網羅的かつノイズなしで発見**する。Session A がノイズとして読んでいた大型ファイル（`public-api.ts` 44 KB, `web/api.ts` 34 KB, `MonitorDetail.tsx` 38 KB）を完全に排除。
+- **モード使い分け**:
+  - `review` モード: REVERSE のみ (-73%) → 影響範囲確認に最適
+  - `implement` モード: REVERSE + FORWARD (-51%) → 実装タスクの完全なコンテキスト取得
 
 ### v0.1 → v0.2 改善サマリ
 
@@ -209,6 +266,6 @@ SKIP: 1170 other files — not in blast radius
 | グラフノード数 | 606 | 1,191 (+97%) |
 | apps/web カバー | ❌ | ✅ 551 nodes |
 | implement モード upstream 検出 | ❌ REVERSE のみ | ✅ FORWARD depth=1 追加 |
-| monitors.ts の co-change 候補 | 0 件 | 20 件（正確） |
+| monitors.ts の co-change 候補 | 0 件 | 21 件（正確） |
 
 > 測定日: 2026-05-01
