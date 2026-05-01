@@ -12,10 +12,13 @@ if [ -z "$FILE_PATH" ] || [ ! -f "$DB_PATH" ]; then
   exit 0
 fi
 
+# シングルクォートを SQL エスケープ（' → ''）してインジェクションを防ぐ
+SAFE_FILE_PATH="${FILE_PATH//\'/\'\'}"
+
 # SQLite から直接ブラスト半径を照会
 RESULT=$(sqlite3 "$DB_PATH" "
   WITH RECURSIVE blast(node_id, depth, reason) AS (
-    SELECT id, 0, 'changed' FROM nodes WHERE file = '${FILE_PATH}'
+    SELECT id, 0, 'changed' FROM nodes WHERE file = '${SAFE_FILE_PATH}'
     UNION ALL
     SELECT e.source_id, b.depth + 1, e.kind
     FROM blast b JOIN edges e ON e.target_id = b.node_id
