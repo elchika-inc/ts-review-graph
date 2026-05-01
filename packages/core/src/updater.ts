@@ -153,45 +153,46 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
   return "updated";
 }
 
-export function buildFullGraph(db: Db, tsconfigPath: string): void {
-  const { nodes, edges, fileHashes } = analyzeProject(tsconfigPath);
-
+export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
   const insertNode = db.prepare(INSERT_NODE);
   const insertEdge = db.prepare(INSERT_EDGE);
   const upsertHash = db.prepare(UPSERT_HASH);
-
-  const now = Date.now();
 
   const deleteEdges = db.prepare("DELETE FROM edges");
   const deleteNodes = db.prepare("DELETE FROM nodes");
   const deleteHashes = db.prepare("DELETE FROM file_hashes");
 
+  const now = Date.now();
+
   const runAll = db.transaction(() => {
-    // 古いデータを全削除してゴーストノードの蓄積を防ぐ
     deleteEdges.run();
     deleteNodes.run();
     deleteHashes.run();
 
-    for (const n of nodes) {
-      insertNode.run({
-        id: n.id,
-        kind: n.kind,
-        name: n.name,
-        file: n.file,
-        line: n.line,
-        signature: n.signature ?? null,
-        typeRefs: JSON.stringify(n.typeRefs),
-      });
-    }
-    for (const e of edges) {
-      insertEdge.run({
-        sourceId: e.sourceId,
-        targetId: e.targetId,
-        kind: e.kind,
-      });
-    }
-    for (const [file, hash] of fileHashes) {
-      upsertHash.run({ file, hash, updatedAt: now });
+    for (const tsconfigPath of tsconfigPaths) {
+      const { nodes, edges, fileHashes } = analyzeProject(tsconfigPath);
+
+      for (const n of nodes) {
+        insertNode.run({
+          id: n.id,
+          kind: n.kind,
+          name: n.name,
+          file: n.file,
+          line: n.line,
+          signature: n.signature ?? null,
+          typeRefs: JSON.stringify(n.typeRefs),
+        });
+      }
+      for (const e of edges) {
+        insertEdge.run({
+          sourceId: e.sourceId,
+          targetId: e.targetId,
+          kind: e.kind,
+        });
+      }
+      for (const [file, hash] of fileHashes) {
+        upsertHash.run({ file, hash, updatedAt: now });
+      }
     }
   });
 
