@@ -66,3 +66,19 @@ export function DEPTH_FOR_MODE(
   const depths: Record<string, number> = { review: 2, implement: 3, debug: 5 };
   return depths[mode] ?? 2;
 }
+
+const FORWARD_DEPS_SQL = `
+SELECT DISTINCT n.file, 'direct import' as reason, 1 as depth
+FROM nodes src
+JOIN edges e ON e.source_id = src.id
+  AND e.kind = 'IMPORTS_FROM'
+JOIN nodes n ON n.id = e.target_id
+WHERE src.file = :changed_file
+  AND n.file != :changed_file
+`;
+
+export function computeForwardDeps(db: Db, changedFile: string): BlastNode[] {
+  return db
+    .prepare(FORWARD_DEPS_SQL)
+    .all({ changed_file: changedFile }) as BlastNode[];
+}
