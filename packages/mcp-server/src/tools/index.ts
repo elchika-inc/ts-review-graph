@@ -1,4 +1,12 @@
 import type { Db } from "@ts-review-graph/core";
+import { getMinimalContext } from "./get-minimal-context.js";
+import { getImpact } from "./get-impact.js";
+import { getTypeUsages } from "./get-type-usages.js";
+import { getCallers } from "./get-callers.js";
+import { getTestCoverage } from "./get-test-coverage.js";
+import { queryGraph } from "./query-graph.js";
+import { buildGraph } from "./build-graph.js";
+import { graphStatus } from "./graph-status.js";
 
 export const TOOL_DEFINITIONS = [
   {
@@ -80,44 +88,39 @@ export const TOOL_DEFINITIONS = [
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
-function notReady(toolName: string): ToolResult {
-  return {
-    content: [{ type: "text", text: `Tool '${toolName}' is not yet implemented.` }],
-  };
-}
-
-function dbRequired(): ToolResult {
-  return {
-    content: [
-      {
-        type: "text",
-        text: "グラフが未構築です。まず `ts-review-graph install` を実行してください。",
-      },
-    ],
-  };
-}
-
 export function registerTools(
   db: Db | null,
   toolName: string,
   args: Record<string, unknown>
 ): ToolResult {
-  void args; // Task 7 で各ツール実装時に使用
-
   if (!db && toolName !== "build_graph") {
-    return dbRequired();
+    return {
+      content: [
+        {
+          type: "text",
+          text: "グラフが未構築です。まず `ts-review-graph install` を実行してください。",
+        },
+      ],
+    };
   }
 
   switch (toolName) {
     case "get_minimal_context":
+      return getMinimalContext(db!, args);
     case "get_impact":
+      return getImpact(db!, args);
     case "get_type_usages":
+      return getTypeUsages(db!, args);
     case "get_callers":
+      return getCallers(db!, args);
     case "get_test_coverage":
+      return getTestCoverage(db!, args);
     case "query_graph":
+      return queryGraph(db!, args);
     case "build_graph":
+      return buildGraph(args);
     case "graph_status":
-      return notReady(toolName);
+      return graphStatus(db!);
     default:
       return {
         content: [{ type: "text", text: `Unknown tool: ${toolName}` }],
