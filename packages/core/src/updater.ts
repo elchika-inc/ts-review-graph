@@ -20,6 +20,11 @@ const INSERT_NODE = `
   VALUES (@id, @kind, @name, @file, @line, @signature, @typeRefs)
 `;
 
+const INSERT_EDGE = `
+  INSERT OR IGNORE INTO edges (source_id, target_id, kind)
+  VALUES (@sourceId, @targetId, @kind)
+`;
+
 const UPSERT_HASH = `
   INSERT INTO file_hashes (file, hash, updated_at)
   VALUES (@file, @hash, @updatedAt)
