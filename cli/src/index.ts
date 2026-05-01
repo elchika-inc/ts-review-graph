@@ -9,7 +9,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import os from "node:os";
 
 const program = new Command();
 program.name("ts-review-graph").version("0.1.0");
@@ -46,28 +45,30 @@ program
       }
     }
 
-    // 4. MCP サーバーを ~/.claude.json に登録
-    const claudeConfigPath = path.join(os.homedir(), ".claude.json");
+    // 4. MCP サーバーをプロジェクトローカルの .mcp.json に登録
+    // ~/.claude.json (グローバル) ではなく .mcp.json を使うことで
+    // 複数プロジェクトが独立して共存できる
+    const mcpJsonPath = path.join(projectRoot, ".mcp.json");
     const serverEntry = {
       command: "npx",
       args: ["ts-review-graph-mcp"],
       env: { TS_REVIEW_GRAPH_DB: dbPath },
     };
 
-    let claudeConfig: Record<string, unknown> = {};
-    if (existsSync(claudeConfigPath)) {
+    let mcpJson: Record<string, unknown> = {};
+    if (existsSync(mcpJsonPath)) {
       try {
-        claudeConfig = JSON.parse(readFileSync(claudeConfigPath, "utf-8")) as Record<string, unknown>;
+        mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf-8")) as Record<string, unknown>;
       } catch {
         // 無効な JSON: 上書きする
       }
     }
 
-    const mcpServers = (claudeConfig["mcpServers"] ?? {}) as Record<string, unknown>;
+    const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
     mcpServers["ts-review-graph"] = serverEntry;
-    claudeConfig["mcpServers"] = mcpServers;
-    writeFileSync(claudeConfigPath, JSON.stringify(claudeConfig, null, 2) + "\n");
-    console.log("✓ MCP サーバーを ~/.claude.json に登録しました");
+    mcpJson["mcpServers"] = mcpServers;
+    writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
+    console.log("✓ MCP サーバーを .mcp.json に登録しました");
 
     // 5. 初回グラフビルド
     const tsconfigPath = path.resolve(opts.tsconfig as string);
@@ -208,28 +209,23 @@ program
   .command("uninstall")
   .description("ts-review-graph をアンインストールする")
   .action(() => {
-    const claudeConfigPath = path.join(os.homedir(), ".claude.json");
-    if (existsSync(claudeConfigPath)) {
-      let claudeConfig: Record<string, unknown> = {};
+    const projectRoot = process.cwd();
+    const mcpJsonPath = path.join(projectRoot, ".mcp.json");
+
+    if (existsSync(mcpJsonPath)) {
+      let mcpJson: Record<string, unknown> = {};
       try {
-        claudeConfig = JSON.parse(
-          readFileSync(claudeConfigPath, "utf-8")
-        ) as Record<string, unknown>;
+        mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf-8")) as Record<string, unknown>;
       } catch {
-        return;
+        // 読み込み失敗時はスキップ
       }
-      const mcpServers = (claudeConfig["mcpServers"] ?? {}) as Record<
-        string,
-        unknown
-      >;
+      const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
       delete mcpServers["ts-review-graph"];
-      claudeConfig["mcpServers"] = mcpServers;
-      writeFileSync(
-        claudeConfigPath,
-        JSON.stringify(claudeConfig, null, 2) + "\n"
-      );
-      console.log("✓ MCP サーバー登録を削除しました");
+      mcpJson["mcpServers"] = mcpServers;
+      writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
+      console.log("✓ .mcp.json から MCP サーバー登録を削除しました");
     }
+
     console.log("グラフデータ (.ts-review-graph/) は手動で削除してください");
     console.log("  rm -rf .ts-review-graph/");
   });
