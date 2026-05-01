@@ -17,10 +17,11 @@
   },
   "dependencies": {
     "ts-morph": "^23.0.0",
-    "better-sqlite3": "^9.0.0"
+    "better-sqlite3": "^12.9.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
   }
