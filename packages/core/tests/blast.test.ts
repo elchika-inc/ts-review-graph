@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "../src/db.js";
-import { computeBlastRadius } from "../src/blast.js";
+import { computeBlastRadius, computeForwardDeps } from "../src/blast.js";
 import { rmSync, existsSync } from "node:fs";
 
 const TEST_DB = "/tmp/ts-review-graph-blast-test.db";
@@ -74,5 +74,39 @@ describe("computeBlastRadius", () => {
     expect(files).toContain("b.ts");
     expect(files).toContain("c.ts");
     expect(files).not.toContain("d.ts"); // depth=2 で止まる
+  });
+});
+
+describe("computeForwardDeps", () => {
+  it("直接 import しているファイルを返す", () => {
+    // monitors.ts が schema.ts を IMPORTS_FROM するケース
+    insertNode(db, "monitors::__file__", "monitors.ts");
+    insertNode(db, "schema::__file__", "schema.ts");
+    insertEdge(db, "monitors::__file__", "schema::__file__", "IMPORTS_FROM");
+
+    const result = computeForwardDeps(db, "monitors.ts");
+    const files = result.map((r) => r.file);
+    expect(files).toContain("schema.ts");
+    expect(files).not.toContain("monitors.ts"); // 自身は含まない
+  });
+
+  it("depth=1 固定 — 間接依存は含まない", () => {
+    insertNode(db, "a::__file__", "a.ts");
+    insertNode(db, "b::__file__", "b.ts");
+    insertNode(db, "c::__file__", "c.ts");
+    insertEdge(db, "a::__file__", "b::__file__", "IMPORTS_FROM");
+    insertEdge(db, "b::__file__", "c::__file__", "IMPORTS_FROM");
+
+    const result = computeForwardDeps(db, "a.ts");
+    const files = result.map((r) => r.file);
+    expect(files).toContain("b.ts");
+    expect(files).not.toContain("c.ts");
+  });
+
+  it("import 先がない場合は空配列", () => {
+    insertNode(db, "standalone::__file__", "standalone.ts");
+
+    const result = computeForwardDeps(db, "standalone.ts");
+    expect(result).toHaveLength(0);
   });
 });
