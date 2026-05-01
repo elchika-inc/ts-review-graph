@@ -1,13 +1,25 @@
 import { computeBlastRadius, computeForwardDeps, DEPTH_FOR_MODE } from "@ts-review-graph/core";
 import type { Db } from "@ts-review-graph/core";
+import path from "node:path";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
+
+// 相対パスをプロジェクトルート基準の絶対パスに変換する
+// DB_PATH = <root>/.ts-review-graph/graph.db なので親の親がルート
+function resolveFilePath(file: string): string {
+  if (path.isAbsolute(file)) return file;
+  const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
+  if (!dbPath) return file;
+  const projectRoot = path.resolve(path.dirname(dbPath), "..");
+  return path.join(projectRoot, file);
+}
 
 export function getMinimalContext(
   db: Db,
   args: Record<string, unknown>
 ): ToolResult {
-  const changedFiles = args["changed_files"] as string[];
+  const rawFiles = args["changed_files"] as string[];
+  const changedFiles = rawFiles.map(resolveFilePath);
   const mode = (args["mode"] as "review" | "implement" | "debug") ?? "review";
   const maxDepth = DEPTH_FOR_MODE(mode);
 
@@ -33,7 +45,7 @@ export function getMinimalContext(
   ).c;
 
   const lines: string[] = [
-    `Changed: ${changedFiles.join(", ")}`,
+    `Changed: ${rawFiles.join(", ")}`,
     ``,
   ];
 
