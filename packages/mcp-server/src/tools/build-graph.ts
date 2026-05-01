@@ -1,20 +1,46 @@
 import { openDb, buildFullGraph } from "@ts-review-graph/core";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
-export function buildGraph(args: Record<string, unknown>): ToolResult {
-  const tsconfigPath =
-    (args["tsconfig"] as string | undefined) ??
-    path.join(process.cwd(), "tsconfig.json");
+function loadTsconfigPaths(cwd: string, argTsconfig?: string): string[] {
+  // 1. Explicit arg
+  if (argTsconfig) {
+    return [argTsconfig];
+  }
 
-  if (!existsSync(tsconfigPath)) {
+  // 2. config.json in .ts-review-graph/
+  const configFile = path.join(cwd, ".ts-review-graph/config.json");
+  if (existsSync(configFile)) {
+    const cfg = JSON.parse(readFileSync(configFile, "utf-8")) as {
+      tsconfigs?: string[];
+    };
+    if (cfg.tsconfigs && cfg.tsconfigs.length > 0) {
+      return cfg.tsconfigs.map((p) =>
+        path.isAbsolute(p) ? p : path.join(cwd, p)
+      );
+    }
+  }
+
+  // 3. Fallback to root tsconfig.json
+  return [path.join(cwd, "tsconfig.json")];
+}
+
+export function buildGraph(args: Record<string, unknown>): ToolResult {
+  const cwd = process.cwd();
+  const tsconfigPaths = loadTsconfigPaths(
+    cwd,
+    args["tsconfig"] as string | undefined
+  );
+
+  const missing = tsconfigPaths.filter((p) => !existsSync(p));
+  if (missing.length > 0) {
     return {
       content: [
         {
           type: "text",
-          text: `tsconfig.json が見つかりません: ${tsconfigPath}`,
+          text: `tsconfig.json が見つかりません: ${missing.join(", ")}`,
         },
       ],
     };
@@ -22,12 +48,12 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
 
   const dbPath =
     process.env["TS_REVIEW_GRAPH_DB"] ??
-    path.join(process.cwd(), ".ts-review-graph/graph.db");
+    path.join(cwd, ".ts-review-graph/graph.db");
   const db = openDb(dbPath);
 
   try {
     const startMs = Date.now();
-    buildFullGraph(db, tsconfigPath);
+    buildFullGraph(db, tsconfigPaths);
     const elapsed = Date.now() - startMs;
 
     const { nodeCount } = db

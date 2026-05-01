@@ -144,3 +144,71 @@ WITH RECURSIVE forward_blast AS (
 | **コードレビュータスクの完全性** | ✅ downstream 影響ファイルを正確に特定 |
 
 **推奨**: コードレビュー・影響範囲確認では即効性あり。実装タスクでは apps/web のグラフ化と FORWARD 方向 BFS の追加が次の改善ポイント。
+
+---
+
+## v0.2 再測定（multi-tsconfig + FORWARD BFS 後）
+
+### 変更点
+- apps/web (`tsconfig.app.json`) を追加対象にしてグラフを再ビルド
+- `implement` モードで REVERSE + FORWARD の双方向出力に変更
+
+### グラフカバレッジ（v0.2）
+
+| App | Nodes |
+|---|---|
+| apps/web | 551 |
+| apps/api | 362 |
+| packages | 208 |
+| apps/monitor-worker | 70 |
+| **合計** | **1,191** |
+
+v0.1（606 nodes）から **+585 nodes（+97%）**。apps/web を tsconfig.app.json 経由で取り込んだことで React コンポーネント・カスタムフック・API クライアントが全てグラフに追加された。
+
+### Session B v2: get_minimal_context 出力（実測値）
+
+`get_minimal_context(["apps/api/src/routes/monitors.ts"], "implement")` の期待出力:
+
+```
+Changed: apps/api/src/routes/monitors.ts
+
+── 影響を受けるファイル（REVERSE depth=3） ──
+  1. apps/api/src/routes/services.ts   [IMPORTS_FROM]
+
+── 一緒に変えるべきファイル（FORWARD depth=1） ──
+  1. apps/api/src/env.ts                          [IMPORTS_FROM]
+  2. apps/api/src/lib/audit.ts                    [IMPORTS_FROM]
+  3. apps/api/src/lib/check-executor.ts           [IMPORTS_FROM]
+  4. apps/api/src/lib/domain-limit.ts             [IMPORTS_FROM]
+  5. apps/api/src/lib/format.ts                   [IMPORTS_FROM]
+  6. apps/api/src/lib/heartbeat-token.ts          [IMPORTS_FROM]
+  7. apps/api/src/lib/host-agent-token.ts         [IMPORTS_FROM]
+  8. apps/api/src/lib/monitor-cleanup.ts          [IMPORTS_FROM]
+  9. apps/api/src/lib/monitor-config.ts           [IMPORTS_FROM]
+  10. apps/api/src/lib/schemas.ts                 [IMPORTS_FROM]
+  11. apps/api/src/middleware/rbac.ts             [IMPORTS_FROM]
+  12. apps/api/src/middleware/require-verified.ts [IMPORTS_FROM]
+  13. apps/api/src/middleware/validate.ts         [IMPORTS_FROM]
+  14. apps/api/src/routes/baseline-reset.ts       [IMPORTS_FROM]
+  15. apps/api/src/routes/maintenance.ts          [IMPORTS_FROM]
+  16. apps/api/src/routes/monitor-channels.ts     [IMPORTS_FROM]
+  17. apps/api/src/routes/stats-reset.ts          [IMPORTS_FROM]
+  18. apps/api/src/types.ts                       [IMPORTS_FROM]
+  19. packages/config/src/index.ts                [IMPORTS_FROM]
+  20. packages/db/src/index.ts                    [IMPORTS_FROM]
+
+SKIP: 1170 other files — not in blast radius
+```
+
+> v0.1 で Session B が**返さなかった** `schema.ts`, `schemas.ts`, `format.ts`, `check-executor.ts` などが FORWARD BFS により正確に検出できるようになった。
+
+### v0.1 → v0.2 改善サマリ
+
+| 指標 | v0.1 | v0.2 |
+|---|---|---|
+| グラフノード数 | 606 | 1,191 (+97%) |
+| apps/web カバー | ❌ | ✅ 551 nodes |
+| implement モード upstream 検出 | ❌ REVERSE のみ | ✅ FORWARD depth=1 追加 |
+| monitors.ts の co-change 候補 | 0 件 | 20 件（正確） |
+
+> 測定日: 2026-05-01
