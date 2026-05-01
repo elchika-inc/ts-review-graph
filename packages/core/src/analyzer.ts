@@ -192,7 +192,6 @@ function extractDeclarations(
 
     // メソッドのパラメータ型参照 → TYPED_BY
     for (const method of cls.getMethods()) {
-      const methodId = nodeId(filePath, `${name}#${method.getName()}`);
       for (const param of method.getParameters()) {
         const sym = param.getType().getSymbol();
         if (sym) {
@@ -200,7 +199,7 @@ function extractDeclarations(
             const targetFile = d.getSourceFile().getFilePath();
             if (targetFile !== filePath && !targetFile.includes("node_modules")) {
               addEdge({
-                sourceId: methodId,
+                sourceId: id,
                 targetId: nodeId(targetFile, sym.getName()),
                 kind: "TYPED_BY",
               });
@@ -225,14 +224,20 @@ function extractDeclarations(
     const name = iface.getName();
     const id = nodeId(filePath, name);
 
-    for (const base of iface.getBaseDeclarations()) {
-      const baseName = (base as any).getName?.();
-      if (baseName) {
-        addEdge({
-          sourceId: id,
-          targetId: nodeId(base.getSourceFile().getFilePath(), baseName),
-          kind: "EXTENDS",
-        });
+    // getExtends() で型安全に基底インターフェースを取得
+    for (const ext of iface.getExtends()) {
+      const sym = ext.getType().getSymbol();
+      if (sym) {
+        for (const d of sym.getDeclarations()) {
+          const targetFile = d.getSourceFile().getFilePath();
+          if (!targetFile.includes("node_modules")) {
+            addEdge({
+              sourceId: id,
+              targetId: nodeId(targetFile, sym.getName()),
+              kind: "EXTENDS",
+            });
+          }
+        }
       }
     }
 
@@ -256,5 +261,22 @@ function extractDeclarations(
       line: ta.getStartLineNumber(),
       typeRefs: [],
     });
+  }
+
+  // 変数 (const fn = () => ... などのトップレベル変数)
+  for (const vs of sf.getVariableStatements()) {
+    if (!vs.isExported()) continue; // エクスポートされた変数のみ
+    for (const decl of vs.getDeclarations()) {
+      const name = decl.getName();
+      if (!name) continue;
+      nodes.push({
+        id: nodeId(filePath, name),
+        kind: "variable" as NodeKind,
+        name,
+        file: filePath,
+        line: decl.getStartLineNumber(),
+        typeRefs: [],
+      });
+    }
   }
 }
