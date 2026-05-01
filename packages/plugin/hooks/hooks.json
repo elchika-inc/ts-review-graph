@@ -1,0 +1,26 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Read",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash $CLAUDE_PLUGIN_ROOT/hooks/scripts/pre-read.sh",
+          "timeout": 5
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Write|Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash $CLAUDE_PLUGIN_ROOT/hooks/scripts/post-write.sh",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ts-review-graph": {
+      "command": "node",
+      "args": ["$CLAUDE_PLUGIN_ROOT/../mcp-server/dist/server.js"],
+      "env": {
+        "TS_REVIEW_GRAPH_DB": "${TS_REVIEW_GRAPH_DB}"
+      }
+    }
+  }
+}
