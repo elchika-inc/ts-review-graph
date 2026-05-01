@@ -7,14 +7,15 @@ export function getTypeUsages(
   args: Record<string, unknown>
 ): ToolResult {
   const typeName = args["type_name"] as string;
+  const escaped = typeName.replace(/%/g, "\\%").replace(/_/g, "\\_");
   const rows = db
     .prepare(
       `SELECT DISTINCT n.file, n.name, n.kind
        FROM nodes n
-       WHERE n.type_refs LIKE ?
+       WHERE n.type_refs LIKE ? ESCAPE '\\'
        ORDER BY n.file`
     )
-    .all(`%${typeName}%`) as Array<{
+    .all(`%${escaped}%`) as Array<{
     file: string;
     name: string;
     kind: string;

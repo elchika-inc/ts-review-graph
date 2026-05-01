@@ -34,12 +34,20 @@ export function queryGraph(
     ORDER BY n.file
   `;
 
-  const rows = db.prepare(sql).all({ from, depth, edgeKind: edgeKind ?? null }) as Array<{
-    id: string;
-    file: string;
-    name: string;
-    kind: string;
-  }>;
+  // edgeKind がある場合とない場合でバインド変数を分ける
+  const rows = edgeKind
+    ? (db.prepare(sql).all({ from, depth, edgeKind }) as Array<{
+        id: string;
+        file: string;
+        name: string;
+        kind: string;
+      }>)
+    : (db.prepare(sql).all({ from, depth }) as Array<{
+        id: string;
+        file: string;
+        name: string;
+        kind: string;
+      }>);
 
   const lines = rows.map((r) => `${r.id}  [${r.kind}]  ${r.file}`);
   return {
