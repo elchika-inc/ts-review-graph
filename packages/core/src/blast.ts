@@ -31,7 +31,7 @@ ORDER BY b.depth, n.file
 
 // HAS_TEST は前方探索: source=実装, target=テスト
 const TEST_LOOKUP_SQL = `
-SELECT DISTINCT n.file, 'HAS_TEST' as reason, 0 as depth
+SELECT DISTINCT n.file, 'HAS_TEST' as reason, 1 as depth
 FROM nodes impl
 JOIN edges e ON e.source_id = impl.id AND e.kind = 'HAS_TEST'
 JOIN nodes n ON n.id = e.target_id
