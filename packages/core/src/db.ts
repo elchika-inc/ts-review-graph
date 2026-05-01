@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { existsSync } from "node:fs";
+import { mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 
 export type Db = Database.Database;
@@ -18,6 +17,11 @@ CREATE TABLE IF NOT EXISTS nodes (
 
 CREATE TABLE IF NOT EXISTS edges (
   source_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  -- target_id には意図的に REFERENCES を付けない。
+  -- 増分更新でファイルAのノードを削除するとき、source が A であるエッジだけを
+  -- CASCADE で消したい。他ファイルから A を target にしているエッジは残す必要がある
+  -- (削除ファイルのブラスト半径計算に使うため)。
+  -- target_id に CASCADE を付けると、A のノード削除時に B→A エッジまで消えてしまう。
   target_id TEXT NOT NULL,
   kind      TEXT NOT NULL,
   PRIMARY KEY (source_id, target_id, kind)
@@ -38,8 +42,13 @@ export function openDb(dbPath: string): Db {
   const dir = dirname(dbPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.exec(DDL);
+  try {
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+    db.exec(DDL);
+  } catch (err) {
+    db.close();
+    throw err;
+  }
   return db;
 }

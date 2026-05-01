@@ -5,7 +5,10 @@ import { rmSync, existsSync } from "node:fs";
 const TEST_DB = "/tmp/ts-review-graph-test.db";
 
 afterEach(() => {
-  if (existsSync(TEST_DB)) rmSync(TEST_DB);
+  for (const ext of ["", "-wal", "-shm"]) {
+    const p = TEST_DB + ext;
+    if (existsSync(p)) rmSync(p);
+  }
 });
 
 describe("openDb", () => {
