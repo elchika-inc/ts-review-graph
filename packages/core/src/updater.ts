@@ -20,11 +20,6 @@ const INSERT_NODE = `
   VALUES (@id, @kind, @name, @file, @line, @signature, @typeRefs)
 `;
 
-const INSERT_EDGE = `
-  INSERT OR IGNORE INTO edges (source_id, target_id, kind)
-  VALUES (@sourceId, @targetId, @kind)
-`;
-
 const UPSERT_HASH = `
   INSERT INTO file_hashes (file, hash, updated_at)
   VALUES (@file, @hash, @updatedAt)
@@ -40,77 +35,80 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
 
   if (oldHash === newHash) return "skipped";
 
-  // 古いノードを削除（ON DELETE CASCADE がエッジも消す）
-  db.prepare("DELETE FROM nodes WHERE file = ?").run(filePath);
-
-  // 単一ファイルを ts-morph で解析（型解決なし）
+  // ts-morph 解析はトランザクション外（純粋な計算、DBアクセスなし）
   const project = new Project({ skipAddingFilesFromTsConfig: true });
   const sf = project.addSourceFileAtPath(filePath);
 
   const insertNode = db.prepare(INSERT_NODE);
-  const insertEdge = db.prepare(INSERT_EDGE);
 
-  // ファイルノード
-  const fileNodeId = `${filePath}::__file__`;
-  insertNode.run({
-    id: fileNodeId,
-    kind: "file",
-    name: filePath.split("/").pop() ?? filePath,
-    file: filePath,
-    line: 1,
-    signature: null,
-    typeRefs: "[]",
+  const run = db.transaction(() => {
+    // 古いノードを削除（ON DELETE CASCADE がエッジも消す）
+    db.prepare("DELETE FROM nodes WHERE file = ?").run(filePath);
+
+    // ファイルノード
+    const fileNodeId = `${filePath}::__file__`;
+    insertNode.run({
+      id: fileNodeId,
+      kind: "file",
+      name: filePath.split("/").pop() ?? filePath,
+      file: filePath,
+      line: 1,
+      signature: null,
+      typeRefs: "[]",
+    });
+
+    // 関数ノード
+    for (const fn of sf.getFunctions()) {
+      const name = fn.getName();
+      if (!name) continue;
+      insertNode.run({
+        id: `${filePath}::${name}`,
+        kind: "function",
+        name,
+        file: filePath,
+        line: fn.getStartLineNumber(),
+        signature: null,
+        typeRefs: "[]",
+      });
+    }
+
+    // クラスノード
+    for (const cls of sf.getClasses()) {
+      const name = cls.getName();
+      if (!name) continue;
+      insertNode.run({
+        id: `${filePath}::${name}`,
+        kind: "class",
+        name,
+        file: filePath,
+        line: cls.getStartLineNumber(),
+        signature: null,
+        typeRefs: "[]",
+      });
+    }
+
+    // インターフェースノード
+    for (const iface of sf.getInterfaces()) {
+      insertNode.run({
+        id: `${filePath}::${iface.getName()}`,
+        kind: "interface",
+        name: iface.getName(),
+        file: filePath,
+        line: iface.getStartLineNumber(),
+        signature: null,
+        typeRefs: "[]",
+      });
+    }
+
+    // ハッシュ UPSERT
+    db.prepare(UPSERT_HASH).run({
+      file: filePath,
+      hash: newHash,
+      updatedAt: Date.now(),
+    });
   });
 
-  // 関数ノード
-  for (const fn of sf.getFunctions()) {
-    const name = fn.getName();
-    if (!name) continue;
-    insertNode.run({
-      id: `${filePath}::${name}`,
-      kind: "function",
-      name,
-      file: filePath,
-      line: fn.getStartLineNumber(),
-      signature: null,
-      typeRefs: "[]",
-    });
-  }
-
-  // クラスノード
-  for (const cls of sf.getClasses()) {
-    const name = cls.getName();
-    if (!name) continue;
-    insertNode.run({
-      id: `${filePath}::${name}`,
-      kind: "class",
-      name,
-      file: filePath,
-      line: cls.getStartLineNumber(),
-      signature: null,
-      typeRefs: "[]",
-    });
-  }
-
-  // インターフェースノード
-  for (const iface of sf.getInterfaces()) {
-    insertNode.run({
-      id: `${filePath}::${iface.getName()}`,
-      kind: "interface",
-      name: iface.getName(),
-      file: filePath,
-      line: iface.getStartLineNumber(),
-      signature: null,
-      typeRefs: "[]",
-    });
-  }
-
-  db.prepare(UPSERT_HASH).run({
-    file: filePath,
-    hash: newHash,
-    updatedAt: Date.now(),
-  });
-
+  run();
   return "updated";
 }
 
