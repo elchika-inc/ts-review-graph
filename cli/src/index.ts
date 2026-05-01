@@ -8,12 +8,8 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
-
-// spawnSync is imported for potential future use (e.g., git operations)
-void spawnSync;
 
 const program = new Command();
 program.name("ts-review-graph").version("0.1.0");
@@ -78,12 +74,15 @@ program
     if (existsSync(tsconfigPath)) {
       console.log("✓ 初回グラフをビルド中...");
       const db = openDb(dbPath);
-      buildFullGraph(db, tsconfigPath);
-      const { nodeCount } = db
-        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-        .get() as { nodeCount: number };
-      db.close();
-      console.log(`✓ グラフ構築完了 (${nodeCount} nodes)`);
+      try {
+        buildFullGraph(db, tsconfigPath);
+        const { nodeCount } = db
+          .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+          .get() as { nodeCount: number };
+        console.log(`✓ グラフ構築完了 (${nodeCount} nodes)`);
+      } finally {
+        db.close();
+      }
     } else {
       console.warn(`⚠ tsconfig.json が見つかりません: ${tsconfigPath}`);
     }
@@ -110,21 +109,24 @@ program
     }
 
     const db = openDb(dbPath);
-    const startMs = Date.now();
-    buildFullGraph(db, tsconfigPath);
-    const elapsed = Date.now() - startMs;
+    try {
+      const startMs = Date.now();
+      buildFullGraph(db, tsconfigPath);
+      const elapsed = Date.now() - startMs;
 
-    const { nodeCount } = db
-      .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-      .get() as { nodeCount: number };
-    const { edgeCount } = db
-      .prepare("SELECT COUNT(*) as edgeCount FROM edges")
-      .get() as { edgeCount: number };
-    db.close();
+      const { nodeCount } = db
+        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+        .get() as { nodeCount: number };
+      const { edgeCount } = db
+        .prepare("SELECT COUNT(*) as edgeCount FROM edges")
+        .get() as { edgeCount: number };
 
-    console.log(
-      `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`
-    );
+      console.log(
+        `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`
+      );
+    } finally {
+      db.close();
+    }
   });
 
 // --- update ---
@@ -145,13 +147,15 @@ program
     }
 
     const db = openDb(dbPath);
-    const result = updateFile(db, path.resolve(file));
-    db.close();
-
-    if (result === "skipped") {
-      console.log(`スキップ（変更なし）: ${file}`);
-    } else {
-      console.log(`更新完了: ${file}`);
+    try {
+      const result = updateFile(db, path.resolve(file));
+      if (result === "skipped") {
+        console.log(`スキップ（変更なし）: ${file}`);
+      } else {
+        console.log(`更新完了: ${file}`);
+      }
+    } finally {
+      db.close();
     }
   });
 
@@ -173,27 +177,30 @@ program
     }
 
     const db = openDb(dbPath);
-    const { nodeCount } = db
-      .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-      .get() as { nodeCount: number };
-    const { edgeCount } = db
-      .prepare("SELECT COUNT(*) as edgeCount FROM edges")
-      .get() as { edgeCount: number };
-    const { fileCount } = db
-      .prepare("SELECT COUNT(*) as fileCount FROM file_hashes")
-      .get() as { fileCount: number };
-    const latest = db
-      .prepare("SELECT MAX(updated_at) as t FROM file_hashes")
-      .get() as { t: number | null };
-    db.close();
+    try {
+      const { nodeCount } = db
+        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+        .get() as { nodeCount: number };
+      const { edgeCount } = db
+        .prepare("SELECT COUNT(*) as edgeCount FROM edges")
+        .get() as { edgeCount: number };
+      const { fileCount } = db
+        .prepare("SELECT COUNT(*) as fileCount FROM file_hashes")
+        .get() as { fileCount: number };
+      const latest = db
+        .prepare("SELECT MAX(updated_at) as t FROM file_hashes")
+        .get() as { t: number | null };
 
-    console.log("ts-review-graph status:");
-    console.log(`  nodes:      ${nodeCount}`);
-    console.log(`  edges:      ${edgeCount}`);
-    console.log(`  files:      ${fileCount}`);
-    console.log(
-      `  updated_at: ${latest.t ? new Date(latest.t).toISOString() : "未構築"}`
-    );
+      console.log("ts-review-graph status:");
+      console.log(`  nodes:      ${nodeCount}`);
+      console.log(`  edges:      ${edgeCount}`);
+      console.log(`  files:      ${fileCount}`);
+      console.log(
+        `  updated_at: ${latest.t ? new Date(latest.t).toISOString() : "未構築"}`
+      );
+    } finally {
+      db.close();
+    }
   });
 
 // --- uninstall ---

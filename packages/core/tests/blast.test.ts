@@ -38,10 +38,10 @@ afterEach(() => {
 
 describe("computeBlastRadius", () => {
   it("直接依存ファイルを返す（depth=1）", () => {
-    // b が a を CALLS → a を変更すると b が影響を受ける
+    // b が a を IMPORTS_FROM → a を変更すると b が影響を受ける
     insertNode(db, "a", "a.ts");
     insertNode(db, "b", "b.ts");
-    insertEdge(db, "b", "a", "CALLS"); // source=b, target=a
+    insertEdge(db, "b", "a", "IMPORTS_FROM"); // source=b, target=a
 
     const result = computeBlastRadius(db, "a.ts", 1);
     const files = result.map((r) => r.file);
@@ -60,14 +60,14 @@ describe("computeBlastRadius", () => {
   });
 
   it("depth 上限を超えたノードは含まれない", () => {
-    // a → b → c → d (4段チェーン、b が a を CALLS、c が b を CALLS...)
+    // a → b → c → d (4段チェーン、b が a を IMPORTS_FROM、c が b を IMPORTS_FROM...)
     insertNode(db, "a", "a.ts");
     insertNode(db, "b", "b.ts");
     insertNode(db, "c", "c.ts");
     insertNode(db, "d", "d.ts");
-    insertEdge(db, "b", "a", "CALLS");
-    insertEdge(db, "c", "b", "CALLS");
-    insertEdge(db, "d", "c", "CALLS");
+    insertEdge(db, "b", "a", "IMPORTS_FROM");
+    insertEdge(db, "c", "b", "IMPORTS_FROM");
+    insertEdge(db, "d", "c", "IMPORTS_FROM");
 
     const result = computeBlastRadius(db, "a.ts", 2);
     const files = result.map((r) => r.file);

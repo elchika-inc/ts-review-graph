@@ -8,7 +8,8 @@ export function queryGraph(
 ): ToolResult {
   const from = args["from"] as string;
   const edgeKind = args["edge_kind"] as string | undefined;
-  const direction = (args["direction"] as string) ?? "forward";
+  const direction: "forward" | "reverse" =
+    args["direction"] === "reverse" ? "reverse" : "forward";
   const depth = Math.min(Number(args["depth"] ?? 1), 10); // 上限10
 
   const kindClause = edgeKind ? "AND e.kind = @edgeKind" : "";

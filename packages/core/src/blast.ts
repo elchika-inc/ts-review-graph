@@ -21,7 +21,7 @@ WITH RECURSIVE blast(node_id, depth, reason) AS (
   FROM blast b
   JOIN edges e ON e.target_id = b.node_id
   WHERE b.depth < :max_depth
-    AND e.kind IN ('CALLS', 'IMPORTS_FROM', 'TYPED_BY', 'IMPLEMENTS', 'EXTENDS')
+    AND e.kind IN ('IMPORTS_FROM', 'TYPED_BY', 'IMPLEMENTS', 'EXTENDS')
 )
 SELECT DISTINCT n.file, b.reason, b.depth
 FROM blast b

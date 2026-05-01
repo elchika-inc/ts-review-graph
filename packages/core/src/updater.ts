@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
+import { resolve as resolvePath, dirname } from "node:path";
 import { Project } from "ts-morph";
 import type { Db } from "./db.js";
 import { analyzeProject } from "./analyzer.js";
@@ -45,6 +46,7 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
   const sf = project.addSourceFileAtPath(filePath);
 
   const insertNode = db.prepare(INSERT_NODE);
+  const insertEdge = db.prepare(INSERT_EDGE);
 
   const run = db.transaction(() => {
     // 古いノードを削除（ON DELETE CASCADE がエッジも消す）
@@ -105,6 +107,40 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
       });
     }
 
+    // IMPORTS_FROM エッジを復元（相対インポートのみ）
+    // Note: TYPED_BY/IMPLEMENTS/EXTENDS/HAS_TEST はクロスファイル解決が必要なため
+    // 次回フル build 時に復元される
+    for (const decl of sf.getImportDeclarations()) {
+      const moduleSpec = decl.getModuleSpecifierValue();
+      // 相対パスのみ解決（npm パッケージは除外）
+      if (!moduleSpec.startsWith(".")) continue;
+
+      const base = resolvePath(dirname(filePath), moduleSpec);
+      const candidates = [
+        base,
+        `${base}.ts`,
+        `${base}.tsx`,
+        `${base}/index.ts`,
+        `${base}/index.tsx`,
+      ];
+
+      for (const candidate of candidates) {
+        // 対象ノードが DB に存在すれば IMPORTS_FROM エッジを挿入
+        const targetNodeId = `${candidate}::__file__`;
+        const exists = db
+          .prepare("SELECT 1 FROM nodes WHERE id = ?")
+          .get(targetNodeId);
+        if (exists) {
+          insertEdge.run({
+            sourceId: fileNodeId,
+            targetId: targetNodeId,
+            kind: "IMPORTS_FROM",
+          });
+          break;
+        }
+      }
+    }
+
     // ハッシュ UPSERT
     db.prepare(UPSERT_HASH).run({
       file: filePath,
@@ -126,7 +162,16 @@ export function buildFullGraph(db: Db, tsconfigPath: string): void {
 
   const now = Date.now();
 
+  const deleteEdges = db.prepare("DELETE FROM edges");
+  const deleteNodes = db.prepare("DELETE FROM nodes");
+  const deleteHashes = db.prepare("DELETE FROM file_hashes");
+
   const runAll = db.transaction(() => {
+    // 古いデータを全削除してゴーストノードの蓄積を防ぐ
+    deleteEdges.run();
+    deleteNodes.run();
+    deleteHashes.run();
+
     for (const n of nodes) {
       insertNode.run({
         id: n.id,

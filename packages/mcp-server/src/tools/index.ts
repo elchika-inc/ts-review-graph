@@ -2,7 +2,6 @@ import type { Db } from "@ts-review-graph/core";
 import { getMinimalContext } from "./get-minimal-context.js";
 import { getImpact } from "./get-impact.js";
 import { getTypeUsages } from "./get-type-usages.js";
-import { getCallers } from "./get-callers.js";
 import { getTestCoverage } from "./get-test-coverage.js";
 import { queryGraph } from "./query-graph.js";
 import { buildGraph } from "./build-graph.js";
@@ -37,15 +36,6 @@ export const TOOL_DEFINITIONS = [
       type: "object" as const,
       properties: { type_name: { type: "string" } },
       required: ["type_name"],
-    },
-  },
-  {
-    name: "get_callers",
-    description: "関数の完全修飾名を受け取り、呼び出し元一覧を返す。",
-    inputSchema: {
-      type: "object" as const,
-      properties: { function_id: { type: "string" } },
-      required: ["function_id"],
     },
   },
   {
@@ -111,8 +101,6 @@ export function registerTools(
       return getImpact(db!, args);
     case "get_type_usages":
       return getTypeUsages(db!, args);
-    case "get_callers":
-      return getCallers(db!, args);
     case "get_test_coverage":
       return getTestCoverage(db!, args);
     case "query_graph":

@@ -24,7 +24,6 @@ export interface GraphEdge {
   sourceId: string;
   targetId: string;
   kind:
-    | "CALLS"
     | "IMPORTS_FROM"
     | "TYPED_BY"
     | "IMPLEMENTS"

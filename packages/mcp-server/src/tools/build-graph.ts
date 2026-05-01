@@ -25,24 +25,27 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
     path.join(process.cwd(), ".ts-review-graph/graph.db");
   const db = openDb(dbPath);
 
-  const startMs = Date.now();
-  buildFullGraph(db, tsconfigPath);
-  const elapsed = Date.now() - startMs;
+  try {
+    const startMs = Date.now();
+    buildFullGraph(db, tsconfigPath);
+    const elapsed = Date.now() - startMs;
 
-  const { nodeCount } = db
-    .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-    .get() as { nodeCount: number };
-  const { edgeCount } = db
-    .prepare("SELECT COUNT(*) as edgeCount FROM edges")
-    .get() as { edgeCount: number };
-  db.close();
+    const { nodeCount } = db
+      .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+      .get() as { nodeCount: number };
+    const { edgeCount } = db
+      .prepare("SELECT COUNT(*) as edgeCount FROM edges")
+      .get() as { edgeCount: number };
 
-  return {
-    content: [
-      {
-        type: "text",
-        text: `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`,
-      },
-    ],
-  };
+    return {
+      content: [
+        {
+          type: "text",
+          text: `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`,
+        },
+      ],
+    };
+  } finally {
+    db.close();
+  }
 }

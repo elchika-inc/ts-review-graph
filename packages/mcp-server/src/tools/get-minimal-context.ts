@@ -30,12 +30,12 @@ export function getMinimalContext(
     lines.push(`  ${i++}. ${file}  [${reason}]`);
   }
 
-  const totalNodes = (
-    db.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number }
+  const totalFiles = (
+    db.prepare("SELECT COUNT(DISTINCT file) as c FROM nodes").get() as { c: number }
   ).c;
   lines.push(
     ``,
-    `SKIP: ${Math.max(0, totalNodes - allFiles.size)} other files — not in blast radius`
+    `SKIP: ${Math.max(0, totalFiles - allFiles.size)} other files — not in blast radius`
   );
 
   return { content: [{ type: "text", text: lines.join("\n") }] };
