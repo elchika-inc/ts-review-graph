@@ -108,9 +108,14 @@ export const TOOL_DEFINITIONS = [
     inputSchema: {
       type: "object" as const,
       properties: {
+        tsconfigs: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: list of tsconfig.json paths to build from (overrides config.json)",
+        },
         tsconfig: {
           type: "string",
-          description: "Optional: path to a specific tsconfig.json to build from (overrides config.json)",
+          description: "Optional: single tsconfig.json path (deprecated — use tsconfigs for multi-tsconfig projects)",
         },
       },
     },

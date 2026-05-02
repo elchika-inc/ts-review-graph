@@ -133,17 +133,22 @@ program
 program
   .command("build")
   .description("プロジェクトのグラフを再構築する")
-  .option("--tsconfig <path>", "tsconfig.json のパス（指定時は config.json を上書き）")
+  .option(
+    "--tsconfig <path>",
+    "tsconfig.json のパス（複数回指定可: --tsconfig a.json --tsconfig b.json）",
+    (val: string, prev: string[]) => [...prev, val],
+    [] as string[]
+  )
   .option("--db <path>", "graph.db のパス")
-  .action((opts: { tsconfig?: string; db?: string }) => {
+  .action((opts: { tsconfig: string[]; db?: string }) => {
     const projectRoot = process.cwd();
     const dbPath =
       opts.db ?? path.join(projectRoot, ".ts-review-graph/graph.db");
 
     let tsconfigPaths: string[];
 
-    if (opts.tsconfig) {
-      tsconfigPaths = [path.resolve(opts.tsconfig)];
+    if (opts.tsconfig.length > 0) {
+      tsconfigPaths = opts.tsconfig.map((p) => path.resolve(p));
     } else {
       const config = readConfig(projectRoot);
       if (config) {

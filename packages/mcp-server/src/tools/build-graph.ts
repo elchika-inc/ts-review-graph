@@ -4,10 +4,10 @@ import { existsSync, readFileSync } from "node:fs";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
-function loadTsconfigPaths(cwd: string, argTsconfig?: string): string[] {
-  // 1. Explicit arg
-  if (argTsconfig) {
-    return [argTsconfig];
+function loadTsconfigPaths(cwd: string, argTsconfigs?: string[]): string[] {
+  // 1. Explicit arg(s)
+  if (argTsconfigs && argTsconfigs.length > 0) {
+    return argTsconfigs;
   }
 
   // 2. config.json in .ts-review-graph/
@@ -29,10 +29,11 @@ function loadTsconfigPaths(cwd: string, argTsconfig?: string): string[] {
 
 export function buildGraph(args: Record<string, unknown>): ToolResult {
   const cwd = process.cwd();
-  const tsconfigPaths = loadTsconfigPaths(
-    cwd,
-    args["tsconfig"] as string | undefined
-  );
+  // tsconfigs (array) takes priority over legacy tsconfig (single string)
+  const rawTsconfigs = args["tsconfigs"] as string[] | undefined;
+  const rawTsconfig = args["tsconfig"] as string | undefined;
+  const argTsconfigs = rawTsconfigs ?? (rawTsconfig ? [rawTsconfig] : undefined);
+  const tsconfigPaths = loadTsconfigPaths(cwd, argTsconfigs);
 
   const missing = tsconfigPaths.filter((p) => !existsSync(p));
   if (missing.length > 0) {
