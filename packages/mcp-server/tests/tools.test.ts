@@ -242,17 +242,27 @@ describe("get_impact", () => {
   it("get_impact: 変更ファイル自身は結果に含まれない", () => {
     const result = registerTools(db, "get_impact", { changed_file: IMPL_FILE });
     expect(result.isError).toBeFalsy();
-    // 変更ファイル自身 (depth=0) はフィルタアウトされる
+    // 変更ファイル自身はフィルタアウトされる
     const lines = result.content[0].text.split("\n");
-    const selfLine = lines.find((l) => l.includes("impl.ts") && l.includes("depth=0"));
+    const selfLine = lines.find((l) => l.includes("impl.ts") && !l.includes("impl.test.ts") && !l.startsWith("Impact of"));
     expect(selfLine).toBeUndefined();
   });
 
   it("get_impact: 依存元がないファイルは 'No dependents found' を返す", () => {
-    // impl.test.ts は誰にも IMPORTS_FROM されておらず HAS_TEST も出ていない — 空の blast radius
     const result = registerTools(db, "get_impact", { changed_file: TEST_FILE });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("No dependents found");
+  });
+
+  it("get_impact: 空文字列の changed_file は isError を返す", () => {
+    const result = registerTools(db, "get_impact", { changed_file: "" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("non-empty string");
+  });
+
+  it("get_impact: 空白のみの changed_file は isError を返す", () => {
+    const result = registerTools(db, "get_impact", { changed_file: "   " });
+    expect(result.isError).toBe(true);
   });
 });
 
@@ -274,6 +284,19 @@ describe("get_type_usages", () => {
     expect(result.content[0].text).toContain("MonitorConfig");
     expect(result.content[0].text).toContain("typed.ts");
   });
+
+  it("get_type_usages: LIKE 特殊文字 % を含む型名でもマッチしない（エスケープ確認）", () => {
+    // type_refs に "Partial%Type" を含むノードはなく、% がワイルドカードとして機能しないことを確認
+    const result = registerTools(db, "get_type_usages", { type_name: "NoMatch%Type" });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No usages found for type");
+  });
+
+  it("get_type_usages: LIKE 特殊文字 _ を含む型名でもエスケープされる", () => {
+    const result = registerTools(db, "get_type_usages", { type_name: "No_Match_Type" });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No usages found for type");
+  });
 });
 
 describe("query_graph", () => {
@@ -288,7 +311,7 @@ describe("query_graph", () => {
     expect(result.content[0].text).toContain("dep.ts");
   });
 
-  it("query_graph: REVERSE 方向で HAS_TEST エッジが含まれる", () => {
+  it("query_graph: FORWARD で HAS_TEST エッジが含まれる", () => {
     const result = registerTools(db, "query_graph", {
       from: IMPL_FILE,
       direction: "forward",
@@ -297,6 +320,26 @@ describe("query_graph", () => {
     });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("impl.test.ts");
+  });
+
+  it("query_graph: REVERSE 方向で dep.ts の依存元 impl.ts を返す", () => {
+    const result = registerTools(db, "query_graph", {
+      from: DEP_FILE,
+      direction: "reverse",
+      edge_kind: "IMPORTS_FROM",
+      depth: 1,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("impl.ts");
+  });
+
+  it("query_graph: from がDBに存在しない場合は空の結果を返す（isError ではない）", () => {
+    const result = registerTools(db, "query_graph", {
+      from: path.join(TEST_PROJECT_ROOT, "nonexistent.ts"),
+      direction: "forward",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("(empty)");
   });
 
   it("query_graph: 不正な edge_kind は isError を返す", () => {

@@ -84,7 +84,10 @@ function resolveFilePath(file: string): string {
     }
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("Path traversal")) throw e;
-    // ENOENT など — ファイルが存在しない場合はシンボリックリンクバイパス不可
+    // ENOENT: ファイルが存在しない場合はシンボリックリンクバイパス不可 — 許容
+    if (e instanceof Error && (e as NodeJS.ErrnoException).code === "ENOENT") return resolved;
+    // EACCES / ELOOP 等: シンボリックリンク検証が不可 — fail-closed
+    throw new Error(`Path safety check failed: ${file}`);
   }
 
   return resolved;
@@ -109,6 +112,8 @@ export function getMinimalContext(
   }
   const maxDepth = DEPTH_FOR_MODE(mode);
 
+  // changedFiles の高速ルックアップ用 Set
+  const changedSet = new Set(changedFiles);
   const reverseFiles = new Map<string, string>();
   const forwardFiles = new Map<string, string>();
 
@@ -147,11 +152,10 @@ export function getMinimalContext(
   ];
 
   // implement モードでは変更ファイル自身はリストから除外して表示
-  // shownCount はあくまで表示したファイル数（変更ファイル自身を除く）
   if (mode === "implement") {
     const displayedReverse: string[] = [];
     for (const [file, reason] of reverseFiles) {
-      if (changedFiles.includes(file)) continue;
+      if (changedSet.has(file)) continue;
       displayedReverse.push(`  ${displayedReverse.length + 1}. ${file}  [${reason}]`);
     }
 
@@ -172,7 +176,8 @@ export function getMinimalContext(
       }
     }
 
-    const shownCount = reverseFiles.size + forwardFiles.size;
+    // 表示したファイル数（変更ファイル自身を除く）のみをカウント
+    const shownCount = displayedReverse.length + forwardFiles.size;
     lines.push(``, `SKIP: ${Math.max(0, totalFiles - shownCount)} other files — not in blast radius`);
   } else {
     lines.push(`READ THESE FILES ONLY (${reverseFiles.size} files, mode=${mode}, depth=${maxDepth}):`);

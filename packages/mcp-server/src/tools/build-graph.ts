@@ -106,6 +106,16 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
         },
       ],
     };
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `グラフ構築に失敗しました: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ],
+      isError: true,
+    };
   } finally {
     db.close();
   }

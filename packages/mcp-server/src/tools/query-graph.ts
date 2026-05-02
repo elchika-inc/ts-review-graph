@@ -29,7 +29,7 @@ export function queryGraph(
     args["direction"] === "reverse" ? "reverse" : "forward";
 
   const rawDepth = Number(args["depth"] ?? 3);
-  const depth = Math.min(Math.max(1, Number.isFinite(rawDepth) ? rawDepth : 3), 10); // 最小1、デフォルト3、上限10
+  const depth = Math.floor(Math.min(Math.max(1, Number.isFinite(rawDepth) ? rawDepth : 3), 10)); // 整数・最小1・デフォルト3・上限10
 
   const kindClause = edgeKind ? "AND e.kind = @edgeKind" : "";
   const traverseJoin =

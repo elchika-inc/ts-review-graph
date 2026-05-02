@@ -88,18 +88,16 @@ program
       opts.tsconfig.length > 0 ? opts.tsconfig : ["tsconfig.json"];
     const tsconfigPaths = rawTsconfigs.map((p) => path.resolve(p));
 
-    // 5. config.json 書き込み
-    const relPaths = tsconfigPaths.map((p) => path.relative(projectRoot, p));
-    writeConfig(projectRoot, { tsconfigs: relPaths });
-    console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
+    // 4a. tsconfig 存在確認 — 書き込み前に検証して壊れた状態を防ぐ
+    const existingPaths = tsconfigPaths.filter(existsSync);
+    if (existingPaths.length === 0) {
+      console.error(`⚠ tsconfig ファイルが見つかりません: ${tsconfigPaths.join(", ")}`);
+      console.error("有効な --tsconfig パスを指定して再実行してください。");
+      process.exit(1);
+    }
 
-    // 6. MCP サーバーを .mcp.json に登録
+    // 4b. .mcp.json を事前にパース確認 — パース失敗なら書き込みを一切行わない
     const mcpJsonPath = path.join(projectRoot, ".mcp.json");
-    const serverEntry = {
-      command: "npx",
-      args: ["-y", "@ts-review-graph/mcp-server"],
-      env: { TS_REVIEW_GRAPH_DB: dbPath },
-    };
     let mcpJson: Record<string, unknown> = {};
     if (existsSync(mcpJsonPath)) {
       try {
@@ -110,40 +108,45 @@ program
         process.exit(1);
       }
     }
+
+    // 5. config.json 書き込み
+    const relPaths = tsconfigPaths.map((p) => path.relative(projectRoot, p));
+    writeConfig(projectRoot, { tsconfigs: relPaths });
+    console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
+
+    // 6. 初回グラフビルド — 成功後にのみ .mcp.json を書き込む
+    console.log(`✓ 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
+    let db;
+    try {
+      db = openDb(dbPath);
+    } catch (err) {
+      console.error("⚠ データベースを開けませんでした:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+    try {
+      buildFullGraph(db, existingPaths);
+      const { nodeCount } = db
+        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+        .get() as { nodeCount: number };
+      console.log(`✓ グラフ構築完了 (${nodeCount} nodes)`);
+    } catch (err) {
+      console.error("⚠ グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    } finally {
+      db.close();
+    }
+
+    // 7. MCP サーバーを .mcp.json に登録 — グラフ構築成功後のみ実行
+    const serverEntry = {
+      command: "npx",
+      args: ["-y", "@ts-review-graph/mcp-server"],
+      env: { TS_REVIEW_GRAPH_DB: dbPath },
+    };
     const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
     mcpServers["ts-review-graph"] = serverEntry;
     mcpJson["mcpServers"] = mcpServers;
     writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
     console.log("✓ MCP サーバーを .mcp.json に登録しました");
-
-    // 7. 初回グラフビルド
-    const existingPaths = tsconfigPaths.filter(existsSync);
-    if (existingPaths.length > 0) {
-      console.log(`✓ 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
-      let db;
-      try {
-        db = openDb(dbPath);
-      } catch (err) {
-        console.error("⚠ データベースを開けませんでした:", err instanceof Error ? err.message : err);
-        process.exit(1);
-      }
-      try {
-        buildFullGraph(db, existingPaths);
-        const { nodeCount } = db
-          .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-          .get() as { nodeCount: number };
-        console.log(`✓ グラフ構築完了 (${nodeCount} nodes)`);
-      } catch (err) {
-        console.error("⚠ グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
-        process.exit(1);
-      } finally {
-        db.close();
-      }
-    } else {
-      console.error(`⚠ tsconfig.json が見つかりません: ${tsconfigPaths.join(", ")}`);
-      console.error("インストールが不完全です。有効な --tsconfig パスを指定して再実行してください。");
-      process.exit(1);
-    }
 
     console.log("\nts-review-graph インストール完了！");
     console.log("Claude Code を再起動して MCP サーバーを有効化してください。");
@@ -183,8 +186,12 @@ program
 
     const existingPaths = tsconfigPaths.filter(existsSync);
     if (existingPaths.length === 0) {
-      console.error(`tsconfig.json が見つかりません: ${tsconfigPaths.join(", ")}`);
+      console.error(`tsconfig ファイルが見つかりません: ${tsconfigPaths.join(", ")}`);
       process.exit(1);
+    }
+    const skippedPaths = tsconfigPaths.filter((p) => !existsSync(p));
+    if (skippedPaths.length > 0) {
+      console.warn(`⚠ 見つからない tsconfig をスキップします: ${skippedPaths.join(", ")}`);
     }
 
     let db;
@@ -240,7 +247,13 @@ program
       process.exit(1);
     }
 
-    const db = openDb(dbPath);
+    let db;
+    try {
+      db = openDb(dbPath);
+    } catch (err) {
+      console.error("グラフ DB を開けませんでした:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
     try {
       const result = updateFile(db, resolvedFile);
       if (result === "skipped") {
@@ -273,7 +286,13 @@ program
       process.exit(1);
     }
 
-    const db = openDb(dbPath);
+    let db;
+    try {
+      db = openDb(dbPath);
+    } catch (err) {
+      console.error("グラフ DB を開けませんでした:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
     try {
       const { nodeCount } = db
         .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
