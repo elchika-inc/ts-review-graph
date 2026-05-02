@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-03
+
+### Fixed
+- **Symlink bypass protection** in `resolveFilePath`: `realpathSync` check now detects symlinks that escape the project root (fail-closed on `EACCES`/`ELOOP`)
+- **`buildFullGraph` prepared statement cache**: extended `WeakMap` to include bulk-delete statements (`deleteAllEdges`, `deleteAllNodes`, `deleteAllHashes`), eliminating redundant `db.prepare()` calls on repeated invocations
+- **Test isolation**: replaced `Date.now()`-based temp paths with `randomUUID()` in `updater.test.ts` and `tools.test.ts` — safe for parallel test execution
+- **`get_impact` self-exclusion test**: improved assertion to use exact file path variable instead of fragile substring match
+
+### Changed
+- `buildFullGraph` now uses the shared `getUpdateStmts(db)` cache for all prepared statements (consistent with `updateFile`)
+- `buildFullGraph` test fixture cleanup wrapped in `try/finally` to guarantee temp dir removal on failure
+
 ## [0.2.0] - 2026-05-01
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "ts-review-graph",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TypeScript dependency graph CLI — build, update and query your codebase graph",
   "type": "module",
   "files": [

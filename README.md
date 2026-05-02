@@ -1,39 +1,42 @@
 # ts-review-graph
 
-TypeScript プロジェクトの依存グラフを SQLite に構築し、コードレビュー・実装・デバッグ前に **「読むべき最小ファイルセット」** を Claude Code (MCP) に伝えるツール。
+Build a TypeScript dependency graph in SQLite and tell Claude Code (via MCP) the **minimal file set to read** before any code review, implementation, or debugging session.
 
-> **English summary**: ts-review-graph builds a TypeScript dependency graph in SQLite and exposes it via MCP to Claude Code. Before reading any source files, Claude calls `get_minimal_context` to get the **minimal blast-radius file set** — typically reducing token consumption by 50–79% compared to unguided exploration. See [BENCHMARK.md](./BENCHMARK.md) for benchmarks.
+> **日本語**: TypeScript プロジェクトの依存グラフを SQLite に構築し、コードレビュー・実装・デバッグ前に「読むべき最小ファイルセット」を Claude Code (MCP) に伝えるツール。
 
-## なぜ使うのか
+## Why?
 
-Claude Code はコードを読みすぎる。大きなファイルを次々と読んで、関係ないコードまでコンテキストに詰め込む。
+Claude Code reads too many files. It grabs large files one after another and stuffs unrelated code into its context.
 
-ts-review-graph はプロジェクトの依存グラフを事前に構築し、**変更対象ファイルの blast radius**（影響範囲）を即座に計算して、Claude が読むべきファイルを絞り込む。
+ts-review-graph pre-builds the project's dependency graph and instantly computes the **blast radius** (impact surface) of changed files — so Claude only reads what matters.
 
-### 実測データ（manako プロジェクト）
+### Real-world benchmark (manako project)
 
-[BENCHMARK.md](./BENCHMARK.md) より：
+From [BENCHMARK.md](./BENCHMARK.md):
 
-- **Read ツール呼び出し**: 14回 → 3回（**-79%**）
-- **ファイルコンテンツトークン**: ~54,784 → ~14,645（**-73%**）
+| Metric | Baseline | ts-review-graph | Reduction |
+|---|---|---|---|
+| `Read` tool calls | 14 | 3 | **−79%** |
+| File content bytes | 219,139 | 58,583 | **−73%** |
+| Estimated tokens | ~54,784 | ~14,645 | **−73%** |
 
-606 ノード / 752 エッジの依存グラフから、変更 3 ファイルの blast radius のみ抽出。
+Graph size: 1,191 nodes / 1,400+ edges (Cloudflare Workers monorepo)
 
-## 前提条件
+## Requirements
 
-- **Node.js 20 以上**
+- **Node.js 20+**
 
-## インストール
+## Installation
 
-### クイックスタート（単一 tsconfig）
+### Single tsconfig
 
 ```bash
 npx ts-review-graph@latest install --tsconfig tsconfig.json
 ```
 
-設定は `.ts-review-graph/config.json` に保存されます。Claude Code を再起動すると MCP が自動接続されます。
+Config is saved to `.ts-review-graph/config.json`. Restart Claude Code and the MCP server connects automatically.
 
-### モノレポ（複数 tsconfig）
+### Monorepo (multiple tsconfigs)
 
 ```bash
 npx ts-review-graph@latest install \
@@ -42,27 +45,27 @@ npx ts-review-graph@latest install \
   --tsconfig apps/worker/tsconfig.json
 ```
 
-複数 tsconfig を指定すると、全アプリのグラフを統合（1,191 ノード以上のマルチレイヤー対応）。
+Multiple tsconfigs are merged into a single unified graph (tested with 1,191+ nodes across layers).
 
-## 使い方
+## Usage
 
-### Claude Code での利用（自動）
+### In Claude Code (automatic)
 
-実装タスク前に Claude が自動的に呼び出します:
+Claude calls `get_minimal_context` automatically before reading source files:
 
 ```
 get_minimal_context(["src/routes/monitors.ts"], "implement")
 ```
 
-出力例（implement モード、apps/web + apps/api）:
+Example output (`implement` mode, apps/web + apps/api):
 
 ```
 Changed: src/routes/monitors.ts
 
-── 影響を受けるファイル（REVERSE depth=3） ──
+── Files affected (REVERSE depth=3) ──
   1. src/routes/services.ts   [IMPORTS_FROM]
 
-── 一緒に変えるべきファイル（FORWARD depth=1） ──
+── Files to change together (FORWARD depth=1) ──
   1. src/env.ts               [direct import]
   2. src/lib/schemas.ts       [direct import]
   3. src/lib/format.ts        [direct import]
@@ -71,39 +74,39 @@ Changed: src/routes/monitors.ts
 SKIP: 1170 other files — not in blast radius
 ```
 
-### CLI コマンド
+### CLI commands
 
-| コマンド | 内容 |
+| Command | Description |
 |---|---|
-| `npx ts-review-graph@latest install --tsconfig <path>` | セットアップ + 初回ビルド |
-| `npx ts-review-graph build [--tsconfig <path>]... [--db <path>]` | グラフを再構築（省略時は config.json 参照） |
-| `npx ts-review-graph update <file> [--db <path>]` | 単一ファイルを増分更新 |
-| `npx ts-review-graph status [--db <path>]` | グラフの統計を表示 |
-| `npx ts-review-graph uninstall` | MCP 登録を解除 |
+| `npx ts-review-graph@latest install --tsconfig <path>` | Setup + initial build |
+| `npx ts-review-graph build [--tsconfig <path>]... [--db <path>]` | Rebuild the graph |
+| `npx ts-review-graph update <file> [--db <path>]` | Incremental update for a single file |
+| `npx ts-review-graph status [--db <path>]` | Show graph statistics |
+| `npx ts-review-graph uninstall` | Remove MCP registration |
 
-### MCP ツール一覧
+### MCP tools
 
-| ツール | 主な引数 | 内容 |
+| Tool | Key args | Description |
 |---|---|---|
-| `get_minimal_context` | `changed_files[]`, `mode`（省略時: `"review"`） | 読むべき最小ファイルセット（REVERSE/FORWARD BFS） |
-| `get_impact` | `changed_file` | 影響を受けるファイルと深さ |
-| `get_type_usages` | `type_name` | 型を参照するノード一覧 |
-| `get_test_coverage` | `file` | 対応するテストファイル一覧 |
-| `query_graph` | `from`, `edge_kind`, `direction`, `depth` | 汎用グラフ探索 |
-| `build_graph` | `tsconfigs[]`（省略可） | グラフを再構築（省略時は `.ts-review-graph/config.json` を参照） |
-| `graph_status` | — | グラフ統計を表示 |
+| `get_minimal_context` | `changed_files[]`, `mode` (default: `"review"`) | Minimal file set (REVERSE/FORWARD BFS) |
+| `get_impact` | `changed_file` | Files affected by a change, with depth |
+| `get_type_usages` | `type_name` | Nodes that reference a type |
+| `get_test_coverage` | `file` | Corresponding test files |
+| `query_graph` | `from`, `edge_kind`, `direction`, `depth` | General-purpose graph traversal |
+| `build_graph` | `tsconfigs[]` (optional) | Rebuild the graph |
+| `graph_status` | — | Graph statistics |
 
-### モード別 BFS 深さ
+### BFS depth by mode
 
-| mode | REVERSE | FORWARD | 用途 |
+| Mode | REVERSE | FORWARD | Use case |
 |---|---|---|---|
-| `review` | depth=2 | なし | コードレビュー前の影響調査（downstream） |
-| `implement` | depth=3 | 直接 import のみ（固定 depth=1） | 実装タスク前の変更候補特定（両方向） |
-| `debug` | depth=5 | なし | バグ調査の広範な探索（downstream — 広範な影響範囲） |
+| `review` | depth=2 | — | Pre-review impact analysis (downstream) |
+| `implement` | depth=3 | depth=1 (direct imports only) | Pre-implementation change surface (bidirectional) |
+| `debug` | depth=5 | — | Wide exploration for bug investigation |
 
-## 設定ファイル
+## Configuration
 
-`.ts-review-graph/config.json`（`install` 時に自動生成、コミット推奨）:
+`.ts-review-graph/config.json` (auto-generated by `install`, commit to repo):
 
 ```json
 {
@@ -115,63 +118,48 @@ SKIP: 1170 other files — not in blast radius
 }
 ```
 
-`graph.db` はビルド成果物のため `.gitignore` に追加されます（自動）。`config.json` はチームで共有してください。
+`graph.db` is a build artifact — added to `.gitignore` automatically. Share `config.json` with your team.
 
-## 仕組み
+## How it works
 
-### グラフ構築フェーズ
+### Build phase
 
-1. 各 `tsconfig.json` を読み込み
-2. TypeScript Compiler API で AST を走査
-3. Import/Export/Type 定義関係を抽出
-4. SQLite (graph.db) に nodes / edges を保存
+1. Load each `tsconfig.json`
+2. Walk the AST using the TypeScript Compiler API
+3. Extract import/export/type relationships
+4. Store nodes and edges in SQLite (`graph.db`)
 
-### クエリフェーズ
+### Query phase
 
-1. 変更ファイル指定（`["src/routes/monitors.ts"]`）
-2. 指定モードで BFS（幅優先探索）実行
-   - REVERSE: このファイルを import している者（downstream）
-   - FORWARD: このファイルが import している者（upstream）
-3. blast radius 内のファイルのみ返す
+1. Specify changed files (`["src/routes/monitors.ts"]`)
+2. Run BFS in the selected mode:
+   - **REVERSE**: who imports this file (downstream impact)
+   - **FORWARD**: what this file imports (upstream co-change candidates)
+3. Return only files within the blast radius
 
-## ベンチマーク
-
-詳細は [BENCHMARK.md](./BENCHMARK.md) を参照。
-
-### まとめ
-
-| 指標 | ベースライン | ts-review-graph | 削減率 |
-|---|---|---|---|
-| Read ツール呼び出し | 14 回 | 3 回 | -79% |
-| ファイルコンテンツバイト | 219,139 | 58,583 | -73% |
-| 推定トークン数 | ~54,784 | ~14,645 | -73% |
-
-**対象**: manako (Cloudflare Workers monorepo)  
-**グラフサイズ**: 1,191 nodes / 1,400+ edges  
-**テストケース**: `monitors.ts` に `isPaused` フラグ追加
-
-## 技術スタック
+## Tech stack
 
 - **Language**: TypeScript 5.4+
-- **Database**: SQLite 3 (sql.js + better-sqlite3)
-- **Graph Traversal**: SQL recursive CTE (WITH RECURSIVE)
+- **Database**: SQLite 3 (better-sqlite3)
+- **Graph traversal**: SQL recursive CTE (`WITH RECURSIVE`)
 - **MCP**: Model Context Protocol SDK v1.0.0
 - **CLI**: Commander.js 12.0.0
 
-## ライセンス
+## License
 
 MIT
 
 ---
 
-## パッケージ
+## Packages
 
-| パッケージ | 説明 | Version |
+| Package | Description | Version |
 |---|---|---|
-| `ts-review-graph` | CLI ツール | 0.2.0 |
-| `@ts-review-graph/mcp-server` | MCP サーバー | 0.2.0 |
-| `@ts-review-graph/core` | グラフ構築・クエリエンジン | 0.2.0 |
+| `ts-review-graph` | CLI tool | 0.3.0 |
+| `@ts-review-graph/mcp-server` | MCP server | 0.3.0 |
+| `@ts-review-graph/core` | Graph build & query engine | 0.3.0 |
 
-## 関連リンク
+## Links
 
-- [BENCHMARK.md](./BENCHMARK.md) — 実測データ
+- [BENCHMARK.md](./BENCHMARK.md) — benchmark data
+- [CHANGELOG.md](./CHANGELOG.md) — release notes
