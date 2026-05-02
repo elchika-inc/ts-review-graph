@@ -98,7 +98,15 @@ export function getMinimalContext(
   if ("content" in validated) return validated;
 
   const { files: rawFiles, mode } = validated;
-  const changedFiles = rawFiles.map(resolveFilePath);
+  let changedFiles: string[];
+  try {
+    changedFiles = rawFiles.map(resolveFilePath);
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `無効なファイルパス: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
   const maxDepth = DEPTH_FOR_MODE(mode);
 
   const reverseFiles = new Map<string, string>();
@@ -116,6 +124,12 @@ export function getMinimalContext(
         }
       }
     }
+  }
+
+  // 複数変更ファイル時: ファイルAのforwardDepがファイルBのblast radiusに入った場合、
+  // 両 Map に重複する可能性がある — forwardFiles から reverseFiles の重複を除去する
+  for (const key of forwardFiles.keys()) {
+    if (reverseFiles.has(key)) forwardFiles.delete(key);
   }
 
   const totalFiles = (getCountStmt(db).get() as { c: number }).c;

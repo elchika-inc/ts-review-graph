@@ -63,10 +63,10 @@ Changed: src/routes/monitors.ts
   1. src/routes/services.ts   [IMPORTS_FROM]
 
 ── 一緒に変えるべきファイル（FORWARD depth=1） ──
-  1. src/env.ts               [IMPORTS_FROM]
-  2. src/lib/schemas.ts       [IMPORTS_FROM]
-  3. src/lib/format.ts        [IMPORTS_FROM]
-  4. packages/db/src/index.ts [IMPORTS_FROM]
+  1. src/env.ts               [direct import]
+  2. src/lib/schemas.ts       [direct import]
+  3. src/lib/format.ts        [direct import]
+  4. packages/db/src/index.ts [direct import]
 
 SKIP: 1170 other files — not in blast radius
 ```
@@ -76,9 +76,9 @@ SKIP: 1170 other files — not in blast radius
 | コマンド | 内容 |
 |---|---|
 | `npx ts-review-graph@latest install --tsconfig <path>` | セットアップ + 初回ビルド |
-| `npx ts-review-graph build` | グラフを再構築（config.json 参照） |
-| `npx ts-review-graph update <file>` | 単一ファイルを増分更新 |
-| `npx ts-review-graph status` | グラフの統計を表示 |
+| `npx ts-review-graph build [--tsconfig <path>]... [--db <path>]` | グラフを再構築（省略時は config.json 参照） |
+| `npx ts-review-graph update <file> [--db <path>]` | 単一ファイルを増分更新 |
+| `npx ts-review-graph status [--db <path>]` | グラフの統計を表示 |
 | `npx ts-review-graph uninstall` | MCP 登録を解除 |
 
 ### MCP ツール一覧
@@ -90,7 +90,7 @@ SKIP: 1170 other files — not in blast radius
 | `get_type_usages` | `type_name` | 型を参照するノード一覧 |
 | `get_test_coverage` | `file` | 対応するテストファイル一覧 |
 | `query_graph` | `from`, `edge_kind`, `direction`, `depth` | 汎用グラフ探索 |
-| `build_graph` | `tsconfigs` | グラフを再構築（`tsconfig` 単一形式は非推奨） |
+| `build_graph` | `tsconfigs[]`（省略可） | グラフを再構築（省略時は `.ts-review-graph/config.json` を参照） |
 | `graph_status` | — | グラフ統計を表示 |
 
 ### モード別 BFS 深さ
@@ -99,7 +99,7 @@ SKIP: 1170 other files — not in blast radius
 |---|---|---|---|
 | `review` | depth=2 | なし | コードレビュー前の影響調査（downstream） |
 | `implement` | depth=3 | 直接 import のみ（固定 depth=1） | 実装タスク前の変更候補特定（両方向） |
-| `debug` | depth=5 | なし | バグ調査の広範な探索（upstream） |
+| `debug` | depth=5 | なし | バグ調査の広範な探索（downstream — 広範な影響範囲） |
 
 ## 設定ファイル
 

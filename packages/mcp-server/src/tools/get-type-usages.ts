@@ -10,7 +10,8 @@ function getTypeUsagesStmt(db: Db) {
       `SELECT DISTINCT n.file, n.name, n.kind
        FROM nodes n
        WHERE n.type_refs LIKE ? ESCAPE '\\'
-       ORDER BY n.file`
+       ORDER BY n.file
+       LIMIT 501`
     );
     typeUsagesStmtCache.set(db, stmt);
   }
@@ -37,7 +38,10 @@ export function getTypeUsages(
     kind: string;
   }>;
 
-  const lines = rows.map((r) => `${r.file}::${r.name}  [${r.kind}]`);
+  const truncated = rows.length > 500;
+  const display = truncated ? rows.slice(0, 500) : rows;
+  const lines = display.map((r) => `${r.file}::${r.name}  [${r.kind}]`);
+  if (truncated) lines.push(`... (500件で打ち切り — より具体的な型名で再検索してください)`);
   return {
     content: [
       {

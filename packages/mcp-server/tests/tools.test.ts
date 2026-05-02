@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "@ts-review-graph/core";
 import { registerTools } from "../src/tools/index.js";
-import { rmSync, existsSync } from "node:fs";
+import { rmSync, existsSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -82,6 +82,8 @@ describe("registerTools", () => {
   it("graph_status がノード数を返す", () => {
     const result = registerTools(db, "graph_status", {});
     expect(result.content[0].text).toContain("nodes");
+    // 3ノード挿入済み (impl.ts, dep.ts, impl.test.ts) — 具体的なカウントを検証
+    expect(result.content[0].text).toMatch(/nodes:\s+3/);
   });
 
   it("graph_status は db=null のときもエラーなしで状態を返す", () => {
@@ -178,22 +180,55 @@ describe("get_minimal_context 引数バリデーション", () => {
     expect(result.content[0].text).toContain("mode must be one of");
   });
 
-  it("プロジェクト外の絶対パスはエラーをスロー（resolveFilePath は throw のまま）", () => {
-    expect(() =>
-      registerTools(db, "get_minimal_context", {
-        changed_files: ["/etc/passwd"],
-        mode: "review",
-      })
-    ).toThrow("Path traversal detected");
+  it("プロジェクト外の絶対パスは isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: ["/etc/passwd"],
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal detected");
   });
 
-  it("パストラバーサル（../../）はエラーをスロー", () => {
-    expect(() =>
-      registerTools(db, "get_minimal_context", {
-        changed_files: ["../../etc/passwd"],
+  it("パストラバーサル（../../）は isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: ["../../etc/passwd"],
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal detected");
+  });
+
+  it("changed_files に非文字列要素が混在する場合は isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE, 42, null],
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("changed_files must be a non-empty array of strings");
+  });
+
+  it("changed_files が 101 件の場合は isError を返す（MAX_CHANGED_FILES 境界）", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: Array.from({ length: 101 }, (_, i) => `file${i}.ts`),
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("at most 100");
+  });
+
+  it("プロジェクト内へのシンボリックリンクでも外部ターゲットは isError を返す", () => {
+    const linkPath = path.join(TEST_PROJECT_ROOT, "escape-link.ts");
+    symlinkSync("/etc/passwd", linkPath);
+    try {
+      const result = registerTools(db, "get_minimal_context", {
+        changed_files: [linkPath],
         mode: "review",
-      })
-    ).toThrow("Path traversal detected");
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Path traversal detected");
+    } finally {
+      rmSync(linkPath, { force: true });
+    }
   });
 });
 
@@ -211,6 +246,13 @@ describe("get_impact", () => {
     const lines = result.content[0].text.split("\n");
     const selfLine = lines.find((l) => l.includes("impl.ts") && l.includes("depth=0"));
     expect(selfLine).toBeUndefined();
+  });
+
+  it("get_impact: 依存元がないファイルは 'No dependents found' を返す", () => {
+    // impl.test.ts は誰にも IMPORTS_FROM されておらず HAS_TEST も出ていない — 空の blast radius
+    const result = registerTools(db, "get_impact", { changed_file: TEST_FILE });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No dependents found");
   });
 });
 

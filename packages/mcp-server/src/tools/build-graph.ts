@@ -79,7 +79,7 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
       content: [
         {
           type: "text",
-          text: `データベースを開けませんでした: ${dbPath} — ${err instanceof Error ? err.message : String(err)}`,
+          text: `データベースを開けませんでした — ${err instanceof Error ? err.message : String(err)}`,
         },
       ],
       isError: true,

@@ -251,7 +251,7 @@ program
       path.join(process.cwd(), ".ts-review-graph/graph.db");
 
     if (!existsSync(dbPath)) {
-      console.log(
+      console.error(
         "グラフが未構築です。ts-review-graph install を実行してください。"
       );
       process.exit(1);
@@ -279,6 +279,9 @@ program
       console.log(
         `  updated_at: ${latest.t ? new Date(latest.t).toISOString() : "未構築"}`
       );
+    } catch (err) {
+      console.error("ステータス取得に失敗しました:", err instanceof Error ? err.message : err);
+      process.exit(1);
     } finally {
       db.close();
     }
@@ -293,17 +296,19 @@ program
     const mcpJsonPath = path.join(projectRoot, ".mcp.json");
 
     if (existsSync(mcpJsonPath)) {
-      let mcpJson: Record<string, unknown> = {};
+      let mcpJson: Record<string, unknown> | null = null;
       try {
         mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf-8")) as Record<string, unknown>;
       } catch {
-        // 読み込み失敗時はスキップ
+        console.warn("⚠ .mcp.json のパースに失敗しました — 手動で ts-review-graph エントリを削除してください。");
       }
-      const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
-      delete mcpServers["ts-review-graph"];
-      mcpJson["mcpServers"] = mcpServers;
-      writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
-      console.log("✓ .mcp.json から MCP サーバー登録を削除しました");
+      if (mcpJson !== null) {
+        const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
+        delete mcpServers["ts-review-graph"];
+        mcpJson["mcpServers"] = mcpServers;
+        writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
+        console.log("✓ .mcp.json から MCP サーバー登録を削除しました");
+      }
     }
 
     console.log("グラフデータ (.ts-review-graph/) は手動で削除してください");
