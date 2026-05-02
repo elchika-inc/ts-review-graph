@@ -164,14 +164,16 @@ export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
 
   const now = Date.now();
 
+  // analyzeProject はトランザクション外で実行（TS Compiler API は純粋な計算、DB アクセスなし）
+  // 全 tsconfig の解析が終わってから一括 INSERT することで書き込みロック時間を最小化する
+  const allResults = tsconfigPaths.map((p) => analyzeProject(p));
+
   const runAll = db.transaction(() => {
     deleteEdges.run();
     deleteNodes.run();
     deleteHashes.run();
 
-    for (const tsconfigPath of tsconfigPaths) {
-      const { nodes, edges, fileHashes } = analyzeProject(tsconfigPath);
-
+    for (const { nodes, edges, fileHashes } of allResults) {
       for (const n of nodes) {
         insertNode.run({
           id: n.id,

@@ -15,22 +15,32 @@ const DB_PATH =
 
 async function main(): Promise<void> {
   const server = new Server(
-    { name: "ts-review-graph", version: "0.1.0" },
+    { name: "ts-review-graph", version: "0.2.0" },
     { capabilities: { tools: {} } }
   );
 
-  const db = existsSync(DB_PATH) ? openDb(DB_PATH) : null;
+  // db はミュータブル — build_graph 後にグラフ DB が作成されたら再オープンする
+  let db = existsSync(DB_PATH) ? openDb(DB_PATH) : null;
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOL_DEFINITIONS,
   }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    return registerTools(
-      db,
-      request.params.name,
-      request.params.arguments ?? {}
-    );
+    try {
+      const result = registerTools(db, request.params.name, request.params.arguments ?? {});
+
+      // build_graph が成功した後、DB ファイルが存在すれば接続を初期化/再オープンする
+      if (request.params.name === "build_graph" && !result.isError && existsSync(DB_PATH)) {
+        db?.close();
+        db = openDb(DB_PATH);
+      }
+
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+    }
   });
 
   const transport = new StdioServerTransport();

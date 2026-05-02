@@ -15,7 +15,7 @@ WITH RECURSIVE blast(node_id, depth, reason) AS (
   FROM nodes
   WHERE file = :changed_file
 
-  UNION ALL
+  UNION
 
   SELECT e.source_id, b.depth + 1, e.kind
   FROM blast b

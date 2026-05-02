@@ -4,23 +4,42 @@ import path from "node:path";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
+const VALID_MODES = ["review", "implement", "debug"] as const;
+type Mode = typeof VALID_MODES[number];
+
+function validateArgs(args: Record<string, unknown>): { files: string[]; mode: Mode } {
+  const files = args["changed_files"];
+  if (!Array.isArray(files) || files.length === 0 || !files.every((f) => typeof f === "string")) {
+    throw new Error("changed_files must be a non-empty array of strings");
+  }
+  const mode = (args["mode"] ?? "review") as string;
+  if (!VALID_MODES.includes(mode as Mode)) {
+    throw new Error(`mode must be one of: ${VALID_MODES.join(", ")}`);
+  }
+  return { files: files as string[], mode: mode as Mode };
+}
+
 // 相対パスをプロジェクトルート基準の絶対パスに変換する
 // DB_PATH = <root>/.ts-review-graph/graph.db なので親の親がルート
+// パストラバーサル（../../）を検出してプロジェクト外アクセスを防ぐ
 function resolveFilePath(file: string): string {
   if (path.isAbsolute(file)) return file;
   const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
   if (!dbPath) return file;
   const projectRoot = path.resolve(path.dirname(dbPath), "..");
-  return path.join(projectRoot, file);
+  const resolved = path.resolve(projectRoot, file);
+  if (!resolved.startsWith(projectRoot + path.sep) && resolved !== projectRoot) {
+    throw new Error(`Path traversal detected: ${file}`);
+  }
+  return resolved;
 }
 
 export function getMinimalContext(
   db: Db,
   args: Record<string, unknown>
 ): ToolResult {
-  const rawFiles = args["changed_files"] as string[];
+  const { files: rawFiles, mode } = validateArgs(args);
   const changedFiles = rawFiles.map(resolveFilePath);
-  const mode = (args["mode"] as "review" | "implement" | "debug") ?? "review";
   const maxDepth = DEPTH_FOR_MODE(mode);
 
   const reverseFiles = new Map<string, string>();

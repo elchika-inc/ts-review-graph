@@ -10,73 +10,122 @@ import { graphStatus } from "./graph-status.js";
 export const TOOL_DEFINITIONS = [
   {
     name: "get_minimal_context",
-    description: "変更ファイルのブラスト半径を計算し、Claude が読むべき最小ファイルセットを返す。コードレビュー・実装・デバッグ前に必ず呼ぶ。",
+    description:
+      "Calculate the blast radius of changed TypeScript files and return the minimal file set to read. " +
+      "Call this BEFORE reading any source files when you need to understand the impact of changes. " +
+      "mode='review': returns reverse dependencies (files that import the changed file). " +
+      "mode='implement': also returns forward dependencies (files the changed file imports) — use this when planning a new feature or adding fields across layers. " +
+      "mode='debug': deeper reverse traversal (depth=5) for tracing cascading failures. " +
+      "変更ファイルのブラスト半径を計算し、読むべき最小ファイルセットを返す。ソースファイルを読む前に必ず呼ぶ。",
     inputSchema: {
       type: "object" as const,
       properties: {
-        changed_files: { type: "array", items: { type: "string" } },
-        mode: { type: "string", enum: ["review", "implement", "debug"] },
+        changed_files: {
+          type: "array",
+          items: { type: "string", description: "File path relative to project root or absolute path" },
+          description: "List of files you plan to change",
+        },
+        mode: {
+          type: "string",
+          enum: ["review", "implement", "debug"],
+          description: "review=check impact, implement=plan changes across layers, debug=deep trace",
+        },
       },
       required: ["changed_files", "mode"],
     },
   },
   {
     name: "get_impact",
-    description: "変更ファイルに依存するファイル一覧と依存理由を返す。",
+    description:
+      "Return all files that depend on the given file, with the dependency reason (IMPORTS_FROM, TYPED_BY, etc.). " +
+      "Use when you need the full dependency list without depth limits. " +
+      "変更ファイルに依存するファイル一覧と依存理由を返す。",
     inputSchema: {
       type: "object" as const,
-      properties: { changed_file: { type: "string" } },
+      properties: {
+        changed_file: { type: "string", description: "Absolute or project-root-relative file path" },
+      },
       required: ["changed_file"],
     },
   },
   {
     name: "get_type_usages",
-    description: "型名を受け取り、その型を参照する全ノードを返す。",
+    description:
+      "Return all nodes (files/classes/functions) that reference the given TypeScript type name. " +
+      "Useful for finding all callers before renaming or refactoring a type. " +
+      "型名を受け取り、その型を参照する全ノードを返す。",
     inputSchema: {
       type: "object" as const,
-      properties: { type_name: { type: "string" } },
+      properties: {
+        type_name: { type: "string", description: "TypeScript type or interface name to search for" },
+      },
       required: ["type_name"],
     },
   },
   {
     name: "get_test_coverage",
-    description: "ファイルパスに対応するテストファイル一覧を返す。",
+    description:
+      "Return test files associated with the given source file via HAS_TEST edges. " +
+      "ファイルパスに対応するテストファイル一覧を返す。",
     inputSchema: {
       type: "object" as const,
-      properties: { file: { type: "string" } },
+      properties: {
+        file: { type: "string", description: "Source file path to look up tests for" },
+      },
       required: ["file"],
     },
   },
   {
     name: "query_graph",
-    description: "グラフをパラメータ化クエリで探索する（汎用）。",
+    description:
+      "General-purpose graph traversal. Explore the dependency graph starting from a file in forward or reverse direction. " +
+      "グラフをパラメータ化クエリで探索する（汎用）。",
     inputSchema: {
       type: "object" as const,
       properties: {
-        from: { type: "string" },
-        edge_kind: { type: "string" },
-        direction: { type: "string", enum: ["forward", "reverse"] },
-        depth: { type: "number" },
+        from: { type: "string", description: "Starting file path (absolute or project-root-relative)" },
+        edge_kind: {
+          type: "string",
+          description: "Filter by edge type: IMPORTS_FROM | TYPED_BY | IMPLEMENTS | EXTENDS | HAS_TEST (omit to include all)",
+        },
+        direction: {
+          type: "string",
+          enum: ["forward", "reverse"],
+          description: "forward=who this file depends on, reverse=who depends on this file",
+        },
+        depth: { type: "number", description: "Traversal depth limit (default: 3)" },
       },
       required: ["from"],
     },
   },
   {
     name: "build_graph",
-    description: "プロジェクト全体のグラフを構築・再構築する。",
+    description:
+      "Build or rebuild the TypeScript dependency graph for this project. " +
+      "Run this once after project setup, and again when files are added or removed. " +
+      "Reads tsconfig paths from .ts-review-graph/config.json if present, otherwise uses tsconfig.json. " +
+      "プロジェクト全体のグラフを構築・再構築する。初回セットアップ時およびファイル追加・削除後に実行する。",
     inputSchema: {
       type: "object" as const,
-      properties: { tsconfig: { type: "string" } },
+      properties: {
+        tsconfig: {
+          type: "string",
+          description: "Optional: path to a specific tsconfig.json to build from (overrides config.json)",
+        },
+      },
     },
   },
   {
     name: "graph_status",
-    description: "グラフの統計情報（ノード数・エッジ数・最終更新）を返す。",
+    description:
+      "Return graph statistics: node count, edge count, and last build time. " +
+      "Use to verify the graph is built before calling other tools. " +
+      "グラフの統計情報（ノード数・エッジ数・最終更新）を返す。",
     inputSchema: { type: "object" as const, properties: {} },
   },
 ];
 
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export function registerTools(
   db: Db | null,
@@ -88,9 +137,10 @@ export function registerTools(
       content: [
         {
           type: "text",
-          text: "グラフが未構築です。まず `ts-review-graph install` を実行してください。",
+          text: "グラフが未構築です。まず `build_graph` ツールを呼び出してグラフを構築してください。",
         },
       ],
+      isError: true,
     };
   }
 
@@ -112,6 +162,7 @@ export function registerTools(
     default:
       return {
         content: [{ type: "text", text: `Unknown tool: ${toolName}` }],
+        isError: true,
       };
   }
 }

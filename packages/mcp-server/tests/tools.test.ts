@@ -88,4 +88,43 @@ describe("registerTools", () => {
     const text = result.content[0].text;
     expect(text).not.toContain("一緒に変えるべきファイル");
   });
+
+  it("db=null のとき isError: true を返す", () => {
+    const result = registerTools(null, "get_impact", { changed_file: "x.ts" });
+    expect(result.isError).toBe(true);
+  });
+
+  it("不明なツール名は isError: true を返す", () => {
+    const result = registerTools(db, "nonexistent_tool", {});
+    expect(result.isError).toBe(true);
+  });
+});
+
+describe("get_minimal_context 引数バリデーション", () => {
+  it("changed_files が配列でない場合はエラーをスロー", () => {
+    expect(() =>
+      registerTools(db, "get_minimal_context", {
+        changed_files: "single-string",
+        mode: "review",
+      })
+    ).toThrow("changed_files must be a non-empty array of strings");
+  });
+
+  it("changed_files が空配列の場合はエラーをスロー", () => {
+    expect(() =>
+      registerTools(db, "get_minimal_context", {
+        changed_files: [],
+        mode: "review",
+      })
+    ).toThrow("changed_files must be a non-empty array of strings");
+  });
+
+  it("mode が不正な値の場合はエラーをスロー", () => {
+    expect(() =>
+      registerTools(db, "get_minimal_context", {
+        changed_files: ["impl.ts"],
+        mode: "invalid",
+      })
+    ).toThrow("mode must be one of");
+  });
 });

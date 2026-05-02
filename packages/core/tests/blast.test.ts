@@ -75,6 +75,34 @@ describe("computeBlastRadius", () => {
     expect(files).toContain("c.ts");
     expect(files).not.toContain("d.ts"); // depth=2 で止まる
   });
+
+  it("循環依存（A→B→A）でも無限ループしない", () => {
+    // A と B が相互 IMPORTS_FROM する循環グラフ
+    insertNode(db, "a", "a.ts");
+    insertNode(db, "b", "b.ts");
+    insertEdge(db, "a", "b", "IMPORTS_FROM");
+    insertEdge(db, "b", "a", "IMPORTS_FROM");
+
+    // UNION（重複排除）により無限展開しないことを確認
+    expect(() => computeBlastRadius(db, "a.ts", 5)).not.toThrow();
+    const result = computeBlastRadius(db, "a.ts", 5);
+    const files = result.map((r) => r.file);
+    expect(files).toContain("a.ts");
+    expect(files).toContain("b.ts");
+  });
+
+  it("3ノード循環依存（A→B→C→A）でも有限結果を返す", () => {
+    insertNode(db, "a", "a.ts");
+    insertNode(db, "b", "b.ts");
+    insertNode(db, "c", "c.ts");
+    insertEdge(db, "a", "b", "IMPORTS_FROM");
+    insertEdge(db, "b", "c", "IMPORTS_FROM");
+    insertEdge(db, "c", "a", "IMPORTS_FROM");
+
+    expect(() => computeBlastRadius(db, "a.ts", 10)).not.toThrow();
+    const result = computeBlastRadius(db, "a.ts", 10);
+    expect(result.length).toBeLessThanOrEqual(3);
+  });
 });
 
 describe("computeForwardDeps", () => {
