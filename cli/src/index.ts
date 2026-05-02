@@ -352,8 +352,14 @@ program
         const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
         delete mcpServers["ts-review-graph"];
         mcpJson["mcpServers"] = mcpServers;
-        writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
-        console.log("✓ .mcp.json から MCP サーバー登録を削除しました");
+        try {
+          writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
+          console.log("✓ .mcp.json から MCP サーバー登録を削除しました");
+        } catch (err) {
+          console.error("⚠ .mcp.json の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+          console.error("  手動で ts-review-graph エントリを削除してください: " + mcpJsonPath);
+          process.exit(1);
+        }
       }
     }
 

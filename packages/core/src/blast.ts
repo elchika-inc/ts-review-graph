@@ -98,8 +98,8 @@ export function computeBlastRadius(
 export function DEPTH_FOR_MODE(
   mode: "review" | "implement" | "debug"
 ): number {
-  const depths: Record<string, number> = { review: 2, implement: 3, debug: 5 };
-  return depths[mode] ?? 2;
+  const depths: Record<"review" | "implement" | "debug", number> = { review: 2, implement: 3, debug: 5 };
+  return depths[mode];
 }
 
 export function computeForwardDeps(db: Db, changedFile: string): BlastNode[] {

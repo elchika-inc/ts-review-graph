@@ -157,7 +157,7 @@ export function getMinimalContext(
   }
 
   const lines: string[] = [
-    `Changed: ${rawFiles.join(", ")}`,
+    `Changed: ${rawFiles.map(f => f.replace(/[\r\n]/g, "")).join(", ")}`,
     ``,
   ];
 
@@ -168,7 +168,7 @@ export function getMinimalContext(
     for (const [file, reason] of reverseFiles) {
       if (changedSet.has(file)) continue;
       if (displayedReverse.length >= MAX_CONTEXT_FILES) { reverseOverflow++; continue; }
-      displayedReverse.push(`  ${displayedReverse.length + 1}. ${file}  [${reason}]`);
+      displayedReverse.push(`  ${displayedReverse.length + 1}. ${file}  [${reason.replace(/[\r\n]/g, "")}]`);
     }
 
     lines.push(`── 影響を受けるファイル（REVERSE depth=${maxDepth}） ──`);
@@ -176,7 +176,7 @@ export function getMinimalContext(
       lines.push(`  (なし)`);
     } else {
       lines.push(...displayedReverse);
-      if (reverseOverflow > 0) lines.push(`  ... (${reverseOverflow} more — changed_files を絞り込むか review モードを使ってください)`);
+      if (reverseOverflow > 0) lines.push(`  ... (${reverseOverflow} more — narrow changed_files or use review mode)`);
     }
 
     lines.push(``, `── 一緒に変えるべきファイル（FORWARD depth=1） ──`);
@@ -185,7 +185,7 @@ export function getMinimalContext(
     } else {
       let i = 1;
       for (const [file, reason] of forwardFiles) {
-        lines.push(`  ${i++}. ${file}  [${reason}]`);
+        lines.push(`  ${i++}. ${file}  [${reason.replace(/[\r\n]/g, "")}]`);
       }
     }
 
@@ -197,11 +197,11 @@ export function getMinimalContext(
     let shown = 0;
     for (const [file, reason] of reverseFiles) {
       if (shown >= MAX_CONTEXT_FILES) break;
-      lines.push(`  ${i++}. ${file}  [${reason}]`);
+      lines.push(`  ${i++}. ${file}  [${reason.replace(/[\r\n]/g, "")}]`);
       shown++;
     }
     if (totalReverse > MAX_CONTEXT_FILES) {
-      lines.push(`  ... (${totalReverse - MAX_CONTEXT_FILES} more — changed_files を絞り込むか review モードを使ってください)`);
+      lines.push(`  ... (${totalReverse - MAX_CONTEXT_FILES} more — narrow changed_files or use review mode)`);
     }
     lines.push(``, `SKIP: ${Math.max(0, totalFiles - totalReverse)} other files — not in blast radius`);
   }

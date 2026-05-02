@@ -216,6 +216,14 @@ describe("get_minimal_context 引数バリデーション", () => {
     expect(result.content[0].text).toContain("at most 100");
   });
 
+  it("changed_files が 100 件の場合は正常に処理される（MAX_CHANGED_FILES 上限ちょうど）", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: Array.from({ length: 100 }, (_, i) => path.join(TEST_PROJECT_ROOT, `nonexistent${i}.ts`)),
+      mode: "review",
+    });
+    expect(result.isError).toBeFalsy();
+  });
+
   it("プロジェクト内へのシンボリックリンクでも外部ターゲットは isError を返す", () => {
     const linkPath = path.join(TEST_PROJECT_ROOT, "escape-link.ts");
     symlinkSync("/etc/passwd", linkPath);
@@ -296,6 +304,17 @@ describe("get_type_usages", () => {
     const result = registerTools(db, "get_type_usages", { type_name: "No_Match_Type" });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("No usages found for type");
+  });
+
+  it("get_type_usages: _ を含む型名でも正しくマッチする（過剰エスケープなし）", () => {
+    const underscoreFile = path.join(TEST_PROJECT_ROOT, "underscore_typed.ts");
+    db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    ).run("underscore::__file__", "file", "underscore_typed.ts", underscoreFile, 1, '["My_Type"]');
+    const result = registerTools(db, "get_type_usages", { type_name: "My_Type" });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("My_Type");
+    expect(result.content[0].text).toContain("underscore_typed.ts");
   });
 });
 
@@ -491,22 +510,31 @@ describe("query_graph 追加バリデーション", () => {
     expect(result.content[0].text).toContain("direction");
   });
 
-  it("depth=0 は 1 にクランプされ正常動作する", () => {
-    const result = registerTools(db, "query_graph", {
+  it("depth=0 は 1 にクランプされ depth=1 と同じ結果を返す", () => {
+    const r0 = registerTools(db, "query_graph", {
       from: IMPL_FILE,
       direction: "forward",
+      edge_kind: "IMPORTS_FROM",
       depth: 0,
     });
-    expect(result.isError).toBeFalsy();
+    const r1 = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "forward",
+      edge_kind: "IMPORTS_FROM",
+      depth: 1,
+    });
+    expect(r0.isError).toBeFalsy();
+    expect(r0.content[0].text).toBe(r1.content[0].text);
   });
 
-  it("depth=11 は 10 にクランプされ正常動作する", () => {
+  it("depth=11 は 10 にクランプされ正常動作し dep.ts を含む結果を返す", () => {
     const result = registerTools(db, "query_graph", {
       from: IMPL_FILE,
       direction: "forward",
       depth: 11,
     });
     expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("dep.ts");
   });
 });
 
@@ -569,6 +597,17 @@ describe("SKIP count の数値検証", () => {
     });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("SKIP: 1 other files");
+  });
+});
+
+describe("get_minimal_context 出力フォーマット", () => {
+  it("出力に内部 DB id (__file__) が含まれない", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [DEP_FILE],
+      mode: "review",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).not.toContain("__file__");
   });
 });
 
@@ -637,7 +676,7 @@ describe("get_type_usages MAX_TYPE_RESULTS 打ち切り", () => {
 
     const result = registerTools(db, "get_type_usages", { type_name: "MyUniqueType" });
     expect(result.isError).toBeFalsy();
-    expect(result.content[0].text).toContain("打ち切り");
-    expect(result.content[0].text).toContain("500件");
+    expect(result.content[0].text).toContain("truncated at 500 results");
+    expect(result.content[0].text).toContain("use a more specific type name");
   });
 });

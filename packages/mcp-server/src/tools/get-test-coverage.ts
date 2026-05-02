@@ -45,7 +45,7 @@ export function getTestCoverage(
   const truncated = rows.length > MAX_TEST_RESULTS;
   const display = truncated ? rows.slice(0, MAX_TEST_RESULTS) : rows;
   const lines = display.map((r) => r.file);
-  if (truncated) lines.push(`... (${MAX_TEST_RESULTS}件で打ち切り)`);
+  if (truncated) lines.push(`... (truncated at ${MAX_TEST_RESULTS} results)`);
 
   return {
     content: [

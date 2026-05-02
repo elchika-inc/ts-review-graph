@@ -64,12 +64,18 @@ async function main(): Promise<void> {
   await server.connect(transport);
 
   const shutdown = async () => {
-    db?.close();
-    await server.close();
-    process.exit(0);
+    try {
+      db?.close();
+      db = null;
+      await server.close();
+    } catch (err) {
+      console.error("[ts-review-graph] shutdown error:", err);
+    } finally {
+      process.exit(0);
+    }
   };
-  process.on("SIGINT", () => { void shutdown(); });
-  process.on("SIGTERM", () => { void shutdown(); });
+  process.once("SIGINT", () => { void shutdown(); });
+  process.once("SIGTERM", () => { void shutdown(); });
 }
 
 main().catch(console.error);

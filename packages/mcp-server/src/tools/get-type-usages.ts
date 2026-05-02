@@ -46,7 +46,7 @@ export function getTypeUsages(
   const truncated = rows.length > MAX_TYPE_RESULTS;
   const display = truncated ? rows.slice(0, MAX_TYPE_RESULTS) : rows;
   const lines = display.map((r) => `${r.file}::${r.name.replace(/[\r\n]/g, "")}  [${r.kind}]`);
-  if (truncated) lines.push(`... (${MAX_TYPE_RESULTS}件で打ち切り — より具体的な型名で再検索してください)`);
+  if (truncated) lines.push(`... (truncated at ${MAX_TYPE_RESULTS} results — use a more specific type name)`);
   return {
     content: [
       {
