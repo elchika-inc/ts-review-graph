@@ -599,6 +599,7 @@ describe("query_graph 出力フォーマット", () => {
     expect(text).toContain("dep.ts");
     // 旧フォーマット (id  [kind]  file) は含まない — id は "dep::__file__" のような値
     expect(text).not.toMatch(/dep::__file__\s+\[/);
+    expect(text).not.toContain("__file__");
   });
 
   it("direction を省略するとデフォルトで forward として動作する", () => {

@@ -111,11 +111,16 @@ program
 
     // 5. config.json 書き込み — 存在するパスのみを記録する
     const relPaths = existingPaths.map((p) => path.relative(projectRoot, p));
-    writeConfig(projectRoot, { tsconfigs: relPaths });
+    try {
+      writeConfig(projectRoot, { tsconfigs: relPaths });
+    } catch (err) {
+      console.error("⚠ config.json の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
     console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
 
     // 6. 初回グラフビルド — 成功後にのみ .mcp.json を書き込む
-    console.log(`… 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
+    console.log(`... 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
     let db;
     try {
       db = openDb(dbPath);

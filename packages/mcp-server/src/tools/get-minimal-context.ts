@@ -189,10 +189,7 @@ export function getMinimalContext(
       }
     }
 
-    // 変更ファイルのうちグラフ内に存在するもの（depth=0 で reverseFiles に含まれる）を加算
-    const changedInGraph = changedFiles.filter((f) => reverseFiles.has(f)).length;
-    const shownCount = displayedReverse.length + forwardFiles.size + changedInGraph;
-    lines.push(``, `SKIP: ${Math.max(0, totalFiles - shownCount)} other files — not in blast radius`);
+    lines.push(``, `SKIP: ${Math.max(0, totalFiles - reverseFiles.size - forwardFiles.size)} other files — not in blast radius`);
   } else {
     const totalReverse = reverseFiles.size;
     lines.push(`READ THESE FILES ONLY (${totalReverse} files, mode=${mode}, depth=${maxDepth}):`);

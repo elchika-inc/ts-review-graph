@@ -108,7 +108,7 @@ export function queryGraph(
 
   const truncated = rows.length > MAX_RESULTS;
   const display = truncated ? rows.slice(0, MAX_RESULTS) : rows;
-  const lines = display.map((r) => `${r.file}::${r.name}  [${r.kind}]`);
+  const lines = display.map((r) => `${r.file}::${r.name.replace(/[\r\n]/g, "")}  [${r.kind}]`);
   if (truncated) lines.push(`... (truncated at ${MAX_RESULTS} results — narrow with edge_kind or reduce depth)`);
 
   return {
