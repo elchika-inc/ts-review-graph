@@ -115,7 +115,7 @@ program
     console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
 
     // 6. 初回グラフビルド — 成功後にのみ .mcp.json を書き込む
-    console.log(`✓ 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
+    console.log(`… 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
     let db;
     try {
       db = openDb(dbPath);
@@ -145,7 +145,13 @@ program
     const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
     mcpServers["ts-review-graph"] = serverEntry;
     mcpJson["mcpServers"] = mcpServers;
-    writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
+    try {
+      writeFileSync(mcpJsonPath, JSON.stringify(mcpJson, null, 2) + "\n");
+    } catch (err) {
+      console.error("⚠ .mcp.json の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+      console.error("  再度 ts-review-graph install を実行するか、手動で .mcp.json に登録してください: " + mcpJsonPath);
+      process.exit(1);
+    }
     console.log("✓ MCP サーバーを .mcp.json に登録しました");
 
     console.log("\nts-review-graph インストール完了！");

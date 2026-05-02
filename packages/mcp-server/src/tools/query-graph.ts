@@ -80,7 +80,15 @@ export function queryGraph(
   const rawDepth = Number(args["depth"] ?? 3);
   const depth = Math.floor(Math.min(Math.max(1, Number.isFinite(rawDepth) ? rawDepth : 3), 10)); // 整数・最小1・デフォルト3・上限10
 
-  const stmts = getQueryGraphStmts(db);
+  let stmts: QueryGraphStmts;
+  try {
+    stmts = getQueryGraphStmts(db);
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `クエリの準備に失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
   const stmt = direction === "forward"
     ? (edgeKind ? stmts.forwardWithKind : stmts.forwardNoKind)
     : (edgeKind ? stmts.reverseWithKind : stmts.reverseNoKind);
@@ -91,6 +99,7 @@ export function queryGraph(
       ? (stmt.all({ from, depth, edgeKind }) as typeof rows)
       : (stmt.all({ from, depth }) as typeof rows);
   } catch (err) {
+    queryGraphStmtCache.delete(db);
     return {
       content: [{ type: "text", text: `グラフクエリに失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
       isError: true,
@@ -99,7 +108,7 @@ export function queryGraph(
 
   const truncated = rows.length > MAX_RESULTS;
   const display = truncated ? rows.slice(0, MAX_RESULTS) : rows;
-  const lines = display.map((r) => `${r.id}  [${r.kind}]  ${r.file}`);
+  const lines = display.map((r) => `${r.file}::${r.name}  [${r.kind}]`);
   if (truncated) lines.push(`... (truncated at ${MAX_RESULTS} results — narrow with edge_kind or reduce depth)`);
 
   return {

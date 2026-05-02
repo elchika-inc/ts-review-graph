@@ -543,3 +543,100 @@ describe("debug モード", () => {
     expect(result.content[0].text).toContain("mode=debug");
   });
 });
+
+describe("SKIP count の数値検証", () => {
+  it("review モード: SKIP count は totalFiles - reverseFiles.size に等しい", () => {
+    // DEP_FILE の blast radius: dep.ts (depth=0), impl.ts (depth=1, IMPORTS_FROM)
+    // totalFiles = 3, reverseFiles.size = 2 → SKIP = 1
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [DEP_FILE],
+      mode: "review",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("SKIP: 1 other files");
+  });
+
+  it("implement モード: SKIP count は正しく計算される", () => {
+    // DEP_FILE の blast radius:
+    //   reverseFiles = {dep.ts: changed, impl.ts: IMPORTS_FROM}
+    //   displayedReverse: impl.ts のみ (dep.ts は changedSet で除外)
+    //   forwardFiles: dep.ts は何も import しない → 0
+    //   changedInGraph = 1 (dep.ts は reverseFiles にある)
+    //   shownCount = 1 + 0 + 1 = 2, totalFiles = 3, SKIP = 1
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [DEP_FILE],
+      mode: "implement",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("SKIP: 1 other files");
+  });
+});
+
+describe("changedFiles 重複排除", () => {
+  it("同じファイルを 2 回渡しても重複排除され 1 回だけ処理する", () => {
+    // DEP_FILE を 2 回渡す → reverseFiles は {dep.ts, impl.ts} (2件)
+    // totalFiles = 3, SKIP = 1 (重複なしと同じ結果)
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [DEP_FILE, DEP_FILE],
+      mode: "review",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("SKIP: 1 other files");
+  });
+});
+
+describe("query_graph 出力フォーマット", () => {
+  it("出力は file::name [kind] 形式で内部 DB id を含まない", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "forward",
+      edge_kind: "IMPORTS_FROM",
+      depth: 1,
+    });
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0].text;
+    // 新フォーマット: /path/dep.ts::dep.ts  [file]
+    expect(text).toContain("dep.ts");
+    // 旧フォーマット (id  [kind]  file) は含まない — id は "dep::__file__" のような値
+    expect(text).not.toMatch(/dep::__file__\s+\[/);
+  });
+
+  it("direction を省略するとデフォルトで forward として動作する", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      edge_kind: "IMPORTS_FROM",
+      depth: 1,
+      // direction を省略
+    });
+    expect(result.isError).toBeFalsy();
+    // forward なら dep.ts が見える
+    expect(result.content[0].text).toContain("dep.ts");
+  });
+
+  it("同一 db で 2 回呼び出してもキャッシュ経由で正常に動作する", () => {
+    const call1 = registerTools(db, "query_graph", { from: IMPL_FILE, direction: "forward", depth: 1 });
+    const call2 = registerTools(db, "query_graph", { from: DEP_FILE, direction: "reverse", depth: 1 });
+    expect(call1.isError).toBeFalsy();
+    expect(call2.isError).toBeFalsy();
+    // 2回目もキャッシュ経由で同一 db のステートメントを再利用
+    expect(call2.content[0].text).toContain("impl.ts");
+  });
+});
+
+describe("get_type_usages MAX_TYPE_RESULTS 打ち切り", () => {
+  it("501 件以上のマッチで打ち切りメッセージを返す", () => {
+    // 501 ノードに type_refs = ["MyUniqueType"] を設定して閾値(500)を超えさせる
+    const insert = db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    );
+    for (let i = 0; i < 501; i++) {
+      const f = path.join(TEST_PROJECT_ROOT, `type_test_${i}.ts`);
+      insert.run(`type_test_${i}::__file__`, "file", `type_test_${i}.ts`, f, 1, '["MyUniqueType"]');
+    }
+
+    const result = registerTools(db, "get_type_usages", { type_name: "MyUniqueType" });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("打ち切り");
+    expect(result.content[0].text).toContain("500件");
+  });
+});

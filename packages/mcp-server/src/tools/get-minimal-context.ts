@@ -21,6 +21,7 @@ function getCountStmt(db: Db): NoParamStmt {
 type Mode = typeof VALID_MODES[number];
 
 const MAX_CHANGED_FILES = 100;
+const MAX_CONTEXT_FILES = 2000;
 
 type ValidatedArgs = { files: string[]; mode: Mode };
 
@@ -103,7 +104,8 @@ export function getMinimalContext(
   const { files: rawFiles, mode } = validated;
   let changedFiles: string[];
   try {
-    changedFiles = rawFiles.map(resolveFilePath);
+    // 重複パスを排除: "./foo.ts" と "src/../foo.ts" が同一ファイルを指す場合でも 1 回だけ処理
+    changedFiles = [...new Set(rawFiles.map(resolveFilePath))];
   } catch (err) {
     return {
       content: [{ type: "text", text: `無効なファイルパス: ${err instanceof Error ? err.message : String(err)}` }],
@@ -162,8 +164,10 @@ export function getMinimalContext(
   // implement モードでは変更ファイル自身はリストから除外して表示
   if (mode === "implement") {
     const displayedReverse: string[] = [];
+    let reverseOverflow = 0;
     for (const [file, reason] of reverseFiles) {
       if (changedSet.has(file)) continue;
+      if (displayedReverse.length >= MAX_CONTEXT_FILES) { reverseOverflow++; continue; }
       displayedReverse.push(`  ${displayedReverse.length + 1}. ${file}  [${reason}]`);
     }
 
@@ -172,6 +176,7 @@ export function getMinimalContext(
       lines.push(`  (なし)`);
     } else {
       lines.push(...displayedReverse);
+      if (reverseOverflow > 0) lines.push(`  ... (${reverseOverflow} more — changed_files を絞り込むか review モードを使ってください)`);
     }
 
     lines.push(``, `── 一緒に変えるべきファイル（FORWARD depth=1） ──`);
@@ -189,12 +194,19 @@ export function getMinimalContext(
     const shownCount = displayedReverse.length + forwardFiles.size + changedInGraph;
     lines.push(``, `SKIP: ${Math.max(0, totalFiles - shownCount)} other files — not in blast radius`);
   } else {
-    lines.push(`READ THESE FILES ONLY (${reverseFiles.size} files, mode=${mode}, depth=${maxDepth}):`);
+    const totalReverse = reverseFiles.size;
+    lines.push(`READ THESE FILES ONLY (${totalReverse} files, mode=${mode}, depth=${maxDepth}):`);
     let i = 1;
+    let shown = 0;
     for (const [file, reason] of reverseFiles) {
+      if (shown >= MAX_CONTEXT_FILES) break;
       lines.push(`  ${i++}. ${file}  [${reason}]`);
+      shown++;
     }
-    lines.push(``, `SKIP: ${Math.max(0, totalFiles - reverseFiles.size)} other files — not in blast radius`);
+    if (totalReverse > MAX_CONTEXT_FILES) {
+      lines.push(`  ... (${totalReverse - MAX_CONTEXT_FILES} more — changed_files を絞り込むか review モードを使ってください)`);
+    }
+    lines.push(``, `SKIP: ${Math.max(0, totalFiles - totalReverse)} other files — not in blast radius`);
   }
 
   return { content: [{ type: "text", text: lines.join("\n") }] };
