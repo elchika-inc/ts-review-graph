@@ -26,9 +26,9 @@ type ValidatedArgs = { files: string[]; mode: Mode };
 
 function validateArgs(args: Record<string, unknown>): ValidatedArgs | ToolResult {
   const files = args["changed_files"];
-  if (!Array.isArray(files) || files.length === 0 || !files.every((f) => typeof f === "string")) {
+  if (!Array.isArray(files) || files.length === 0 || !files.every((f) => typeof f === "string" && f.trim() !== "")) {
     return {
-      content: [{ type: "text", text: "changed_files must be a non-empty array of strings" }],
+      content: [{ type: "text", text: "changed_files must be a non-empty array of non-empty strings" }],
       isError: true,
     };
   }
@@ -144,7 +144,15 @@ export function getMinimalContext(
     if (reverseFiles.has(key)) forwardFiles.delete(key);
   }
 
-  const totalFiles = (getCountStmt(db).get() as { c: number }).c;
+  let totalFiles: number;
+  try {
+    totalFiles = (getCountStmt(db).get() as { c: number }).c;
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `ノード数の取得に失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
 
   const lines: string[] = [
     `Changed: ${rawFiles.join(", ")}`,
@@ -176,8 +184,9 @@ export function getMinimalContext(
       }
     }
 
-    // 表示したファイル数（変更ファイル自身を除く）のみをカウント
-    const shownCount = displayedReverse.length + forwardFiles.size;
+    // 変更ファイルのうちグラフ内に存在するもの（depth=0 で reverseFiles に含まれる）を加算
+    const changedInGraph = changedFiles.filter((f) => reverseFiles.has(f)).length;
+    const shownCount = displayedReverse.length + forwardFiles.size + changedInGraph;
     lines.push(``, `SKIP: ${Math.max(0, totalFiles - shownCount)} other files — not in blast radius`);
   } else {
     lines.push(`READ THESE FILES ONLY (${reverseFiles.size} files, mode=${mode}, depth=${maxDepth}):`);

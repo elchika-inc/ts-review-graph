@@ -159,7 +159,7 @@ describe("get_minimal_context 引数バリデーション", () => {
       mode: "review",
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("changed_files must be a non-empty array of strings");
+    expect(result.content[0].text).toContain("changed_files must be a non-empty array of non-empty strings");
   });
 
   it("changed_files が空配列の場合は isError を返す", () => {
@@ -168,7 +168,7 @@ describe("get_minimal_context 引数バリデーション", () => {
       mode: "review",
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("changed_files must be a non-empty array of strings");
+    expect(result.content[0].text).toContain("changed_files must be a non-empty array of non-empty strings");
   });
 
   it("mode が不正な値の場合は isError を返す", () => {
@@ -204,7 +204,7 @@ describe("get_minimal_context 引数バリデーション", () => {
       mode: "review",
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("changed_files must be a non-empty array of strings");
+    expect(result.content[0].text).toContain("changed_files must be a non-empty array of non-empty strings");
   });
 
   it("changed_files が 101 件の場合は isError を返す（MAX_CHANGED_FILES 境界）", () => {
@@ -449,6 +449,72 @@ describe("build_graph", () => {
       }
       rmSync(tmpRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe("get_minimal_context 追加バリデーション", () => {
+  it("changed_files 配列内に空文字列が含まれる場合は isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE, ""],
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("non-empty strings");
+  });
+
+  it("mode を省略した場合はデフォルト 'review' として動作する", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE],
+      // mode を省略
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("mode=review");
+  });
+
+  it("mode が数値（非文字列）の場合は isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE],
+      mode: 42,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("mode must be one of");
+  });
+});
+
+describe("query_graph 追加バリデーション", () => {
+  it("不正な direction は isError を返す", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "backwards",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("direction");
+  });
+
+  it("depth=0 は 1 にクランプされ正常動作する", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "forward",
+      depth: 0,
+    });
+    expect(result.isError).toBeFalsy();
+  });
+
+  it("depth=11 は 10 にクランプされ正常動作する", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "forward",
+      depth: 11,
+    });
+    expect(result.isError).toBeFalsy();
+  });
+});
+
+describe("get_test_coverage 追加テスト", () => {
+  it("テストファイルが存在しないファイルは 'No test files found' を返す", () => {
+    const result = registerTools(db, "get_test_coverage", { file: DEP_FILE });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No test files found");
   });
 });
 

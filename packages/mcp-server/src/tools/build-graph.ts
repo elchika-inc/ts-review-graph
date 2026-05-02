@@ -91,21 +91,27 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
     buildFullGraph(db, tsconfigPaths);
     const elapsed = Date.now() - startMs;
 
-    const { nodeCount } = db
-      .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-      .get() as { nodeCount: number };
-    const { edgeCount } = db
-      .prepare("SELECT COUNT(*) as edgeCount FROM edges")
-      .get() as { edgeCount: number };
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`,
-        },
-      ],
-    };
+    // グラフ構築成功後の統計取得 — 失敗してもグラフ構築成功は確定なので別 catch で区別する
+    try {
+      const { nodeCount } = db
+        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+        .get() as { nodeCount: number };
+      const { edgeCount } = db
+        .prepare("SELECT COUNT(*) as edgeCount FROM edges")
+        .get() as { edgeCount: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`,
+          },
+        ],
+      };
+    } catch {
+      return {
+        content: [{ type: "text", text: `グラフ構築完了 (${elapsed}ms) — 統計情報の取得に失敗しました` }],
+      };
+    }
   } catch (err) {
     return {
       content: [

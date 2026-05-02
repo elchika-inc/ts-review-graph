@@ -109,8 +109,8 @@ program
       }
     }
 
-    // 5. config.json 書き込み
-    const relPaths = tsconfigPaths.map((p) => path.relative(projectRoot, p));
+    // 5. config.json 書き込み — 存在するパスのみを記録する
+    const relPaths = existingPaths.map((p) => path.relative(projectRoot, p));
     writeConfig(projectRoot, { tsconfigs: relPaths });
     console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
 

@@ -1,6 +1,8 @@
 import type { Db } from "@ts-review-graph/core";
 import type { ToolResult } from "./types.js";
 
+const MAX_TYPE_RESULTS = 500;
+
 // LIKE クエリのステートメントを Db インスタンスごとにキャッシュ
 const typeUsagesStmtCache = new WeakMap<Db, ReturnType<Db["prepare"]>>();
 function getTypeUsagesStmt(db: Db) {
@@ -11,7 +13,7 @@ function getTypeUsagesStmt(db: Db) {
        FROM nodes n
        WHERE n.type_refs LIKE ? ESCAPE '\\'
        ORDER BY n.file
-       LIMIT 501`
+       LIMIT ${MAX_TYPE_RESULTS + 1}`
     );
     typeUsagesStmtCache.set(db, stmt);
   }
@@ -41,10 +43,10 @@ export function getTypeUsages(
     };
   }
 
-  const truncated = rows.length > 500;
-  const display = truncated ? rows.slice(0, 500) : rows;
+  const truncated = rows.length > MAX_TYPE_RESULTS;
+  const display = truncated ? rows.slice(0, MAX_TYPE_RESULTS) : rows;
   const lines = display.map((r) => `${r.file}::${r.name}  [${r.kind}]`);
-  if (truncated) lines.push(`... (500件で打ち切り — より具体的な型名で再検索してください)`);
+  if (truncated) lines.push(`... (${MAX_TYPE_RESULTS}件で打ち切り — より具体的な型名で再検索してください)`);
   return {
     content: [
       {
