@@ -175,4 +175,3 @@ MIT
 ## 関連リンク
 
 - [BENCHMARK.md](./BENCHMARK.md) — 実測データ
-- [docs/](./docs/) — 詳細ドキュメント（開発中）
