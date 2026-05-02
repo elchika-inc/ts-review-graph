@@ -1,6 +1,25 @@
 import type { Db } from "@ts-review-graph/core";
 import type { ToolResult } from "./types.js";
 
+const MAX_TEST_RESULTS = 100;
+
+const testCoverageStmtCache = new WeakMap<Db, ReturnType<Db["prepare"]>>();
+function getTestCoverageStmt(db: Db) {
+  let stmt = testCoverageStmtCache.get(db);
+  if (!stmt) {
+    stmt = db.prepare(
+      `SELECT n.file
+       FROM nodes impl
+       JOIN edges e ON e.source_id = impl.id AND e.kind = 'HAS_TEST'
+       JOIN nodes n ON n.id = e.target_id
+       WHERE impl.file = ?
+       LIMIT ${MAX_TEST_RESULTS + 1}`
+    );
+    testCoverageStmtCache.set(db, stmt);
+  }
+  return stmt;
+}
+
 export function getTestCoverage(
   db: Db,
   args: Record<string, unknown>
@@ -12,17 +31,22 @@ export function getTestCoverage(
       isError: true,
     };
   }
-  const rows = db
-    .prepare(
-      `SELECT n.file
-       FROM nodes impl
-       JOIN edges e ON e.source_id = impl.id AND e.kind = 'HAS_TEST'
-       JOIN nodes n ON n.id = e.target_id
-       WHERE impl.file = ?`
-    )
-    .all(file) as Array<{ file: string }>;
 
-  const lines = rows.map((r) => r.file);
+  let rows: Array<{ file: string }>;
+  try {
+    rows = getTestCoverageStmt(db).all(file) as typeof rows;
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `テストカバレッジの取得に失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
+
+  const truncated = rows.length > MAX_TEST_RESULTS;
+  const display = truncated ? rows.slice(0, MAX_TEST_RESULTS) : rows;
+  const lines = display.map((r) => r.file);
+  if (truncated) lines.push(`... (${MAX_TEST_RESULTS}件で打ち切り)`);
+
   return {
     content: [
       {

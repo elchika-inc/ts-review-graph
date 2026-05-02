@@ -112,18 +112,25 @@ export function getMinimalContext(
   const reverseFiles = new Map<string, string>();
   const forwardFiles = new Map<string, string>();
 
-  for (const file of changedFiles) {
-    for (const node of computeBlastRadius(db, file, maxDepth)) {
-      if (!reverseFiles.has(node.file)) reverseFiles.set(node.file, node.reason);
-    }
+  try {
+    for (const file of changedFiles) {
+      for (const node of computeBlastRadius(db, file, maxDepth)) {
+        if (!reverseFiles.has(node.file)) reverseFiles.set(node.file, node.reason);
+      }
 
-    if (mode === "implement") {
-      for (const node of computeForwardDeps(db, file)) {
-        if (!reverseFiles.has(node.file) && !forwardFiles.has(node.file)) {
-          forwardFiles.set(node.file, node.reason);
+      if (mode === "implement") {
+        for (const node of computeForwardDeps(db, file)) {
+          if (!reverseFiles.has(node.file) && !forwardFiles.has(node.file)) {
+            forwardFiles.set(node.file, node.reason);
+          }
         }
       }
     }
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `blast radius の計算に失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
   }
 
   // 複数変更ファイル時: ファイルAのforwardDepがファイルBのblast radiusに入った場合、

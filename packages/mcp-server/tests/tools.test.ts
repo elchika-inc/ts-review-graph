@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "@ts-review-graph/core";
 import { registerTools } from "../src/tools/index.js";
-import { rmSync, existsSync, symlinkSync } from "node:fs";
+import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -379,5 +379,58 @@ describe("build_graph", () => {
     });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("tsconfig.json not found");
+  });
+
+  it("build_graph: config.json が存在する場合はそこから tsconfigs を読み込む", () => {
+    const tmpRoot = `/tmp/ts-rg-config-test-${Date.now()}`;
+    const configDir = path.join(tmpRoot, ".ts-review-graph");
+    const configPath = path.join(configDir, "config.json");
+    const buildDbPath = path.join(configDir, "graph.db");
+
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(configPath, JSON.stringify({ tsconfigs: [FIXTURE_TSCONFIG] }));
+
+    const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
+    process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
+
+    try {
+      // tsconfigs 引数なし → build_graph は config.json から読み込む
+      const result = registerTools(null, "build_graph", {});
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain("nodes");
+    } finally {
+      if (prevDb !== undefined) {
+        process.env["TS_REVIEW_GRAPH_DB"] = prevDb;
+      } else {
+        delete process.env["TS_REVIEW_GRAPH_DB"];
+      }
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("debug モード", () => {
+  it("debug モードは REVERSE depth=5 で広範な影響範囲を探索する", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [DEP_FILE],
+      mode: "debug",
+    });
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0].text;
+    // debug は review/implement と同じ REVERSE 形式で出力
+    expect(text).toContain("READ THESE FILES ONLY");
+    // dep.ts を IMPORTS_FROM している impl.ts が blast radius に含まれる
+    expect(text).toContain("impl.ts");
+    // debug モード専用の depth 表示
+    expect(text).toContain("mode=debug");
+  });
+
+  it("debug モードは 'debug' と mode 表示を含む", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE],
+      mode: "debug",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("mode=debug");
   });
 });

@@ -30,13 +30,16 @@ export function getTypeUsages(
     };
   }
 
-  const escaped = typeName.replace(/%/g, "\\%").replace(/_/g, "\\_");
-  const rows = getTypeUsagesStmt(db)
-    .all(`%${escaped}%`) as Array<{
-    file: string;
-    name: string;
-    kind: string;
-  }>;
+  const escaped = typeName.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+  let rows: Array<{ file: string; name: string; kind: string }>;
+  try {
+    rows = getTypeUsagesStmt(db).all(`%${escaped}%`) as typeof rows;
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `型使用箇所の検索に失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
 
   const truncated = rows.length > 500;
   const display = truncated ? rows.slice(0, 500) : rows;

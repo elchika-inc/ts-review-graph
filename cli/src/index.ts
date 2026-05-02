@@ -104,7 +104,11 @@ program
     if (existsSync(mcpJsonPath)) {
       try {
         mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf-8")) as Record<string, unknown>;
-      } catch { /* 無効な JSON は上書き */ }
+      } catch {
+        console.error("⚠ .mcp.json のパースに失敗しました。既存の設定が破損しています。");
+        console.error("  手動で修正するか削除してから再実行してください: " + mcpJsonPath);
+        process.exit(1);
+      }
     }
     const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
     mcpServers["ts-review-graph"] = serverEntry;
@@ -116,7 +120,13 @@ program
     const existingPaths = tsconfigPaths.filter(existsSync);
     if (existingPaths.length > 0) {
       console.log(`✓ 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
-      const db = openDb(dbPath);
+      let db;
+      try {
+        db = openDb(dbPath);
+      } catch (err) {
+        console.error("⚠ データベースを開けませんでした:", err instanceof Error ? err.message : err);
+        process.exit(1);
+      }
       try {
         buildFullGraph(db, existingPaths);
         const { nodeCount } = db
@@ -177,7 +187,13 @@ program
       process.exit(1);
     }
 
-    const db = openDb(dbPath);
+    let db;
+    try {
+      db = openDb(dbPath);
+    } catch (err) {
+      console.error("グラフ DB を開けませんでした:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
     try {
       const startMs = Date.now();
       buildFullGraph(db, existingPaths);

@@ -29,7 +29,7 @@ export function queryGraph(
     args["direction"] === "reverse" ? "reverse" : "forward";
 
   const rawDepth = Number(args["depth"] ?? 3);
-  const depth = Math.min(Number.isFinite(rawDepth) ? rawDepth : 3, 10); // デフォルト3、上限10
+  const depth = Math.min(Math.max(1, Number.isFinite(rawDepth) ? rawDepth : 3), 10); // 最小1、デフォルト3、上限10
 
   const kindClause = edgeKind ? "AND e.kind = @edgeKind" : "";
   const traverseJoin =
@@ -56,19 +56,17 @@ export function queryGraph(
     LIMIT ${MAX_RESULTS + 1}
   `;
 
-  const rows = edgeKind
-    ? (db.prepare(sql).all({ from, depth, edgeKind }) as Array<{
-        id: string;
-        file: string;
-        name: string;
-        kind: string;
-      }>)
-    : (db.prepare(sql).all({ from, depth }) as Array<{
-        id: string;
-        file: string;
-        name: string;
-        kind: string;
-      }>);
+  let rows: Array<{ id: string; file: string; name: string; kind: string }>;
+  try {
+    rows = edgeKind
+      ? (db.prepare(sql).all({ from, depth, edgeKind }) as typeof rows)
+      : (db.prepare(sql).all({ from, depth }) as typeof rows);
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `グラフクエリに失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
 
   const truncated = rows.length > MAX_RESULTS;
   const display = truncated ? rows.slice(0, MAX_RESULTS) : rows;
