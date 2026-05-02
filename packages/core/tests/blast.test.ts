@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "../src/db.js";
 import { computeBlastRadius, computeForwardDeps } from "../src/blast.js";
 import { rmSync, existsSync } from "node:fs";
-
-const TEST_DB = `/tmp/ts-review-graph-blast-test-${Date.now()}.db`;
+import { randomUUID } from "node:crypto";
 
 function insertNode(db: ReturnType<typeof openDb>, id: string, file: string) {
   db.prepare(
@@ -23,15 +22,17 @@ function insertEdge(
 }
 
 let db: ReturnType<typeof openDb>;
+let testDb: string;
 
 beforeEach(() => {
-  db = openDb(TEST_DB);
+  testDb = `/tmp/ts-review-graph-blast-test-${randomUUID()}.db`;
+  db = openDb(testDb);
 });
 
 afterEach(() => {
   db.close();
   for (const ext of ["", "-wal", "-shm"]) {
-    const p = TEST_DB + ext;
+    const p = testDb + ext;
     if (existsSync(p)) rmSync(p);
   }
 });

@@ -24,12 +24,14 @@ export function getImpact(db: Db, args: Record<string, unknown>): ToolResult {
   }
   nodes = nodes.filter((n) => n.file !== changedFile);
 
+  const sanitize = (s: string) => s.replace(/[\r\n]/g, "");
+  const safeChangedFile = sanitize(changedFile);
   const display = nodes.slice(0, MAX_RESULTS);
   const suffix =
     nodes.length > MAX_RESULTS
       ? `\n... and ${nodes.length - MAX_RESULTS} more (truncated at ${MAX_RESULTS})`
       : "";
-  const lines = display.map((n) => `${n.file}  [${n.reason}, depth=${n.depth}]`);
+  const lines = display.map((n) => `${sanitize(n.file)}  [${sanitize(n.reason)}, depth=${n.depth}]`);
 
   return {
     content: [
@@ -37,8 +39,8 @@ export function getImpact(db: Db, args: Record<string, unknown>): ToolResult {
         type: "text",
         text:
           lines.length > 0
-            ? `Impact of ${changedFile}:\n${lines.join("\n")}${suffix}`
-            : `No dependents found for ${changedFile}`,
+            ? `Impact of ${safeChangedFile}:\n${lines.join("\n")}${suffix}`
+            : `No dependents found for ${safeChangedFile}`,
       },
     ],
   };

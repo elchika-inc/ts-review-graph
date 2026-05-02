@@ -4,24 +4,26 @@ import { updateFile, buildFullGraph } from "../src/updater.js";
 import { rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
-
-const TEST_DB = `/tmp/ts-review-graph-updater-test-${Date.now()}.db`;
+import { randomUUID } from "node:crypto";
 
 let db: ReturnType<typeof openDb>;
 let tmpDir: string;
+let testDb: string;
 
 beforeEach(() => {
-  db = openDb(TEST_DB);
-  tmpDir = path.join(os.tmpdir(), `ts-rg-test-${Date.now()}`);
+  testDb = `/tmp/ts-review-graph-updater-test-${randomUUID()}.db`;
+  db = openDb(testDb);
+  tmpDir = path.join(os.tmpdir(), `ts-rg-test-${randomUUID()}`);
   mkdirSync(tmpDir, { recursive: true });
 });
 
 afterEach(() => {
   db.close();
   for (const ext of ["", "-wal", "-shm"]) {
-    const p = TEST_DB + ext;
+    const p = testDb + ext;
     if (existsSync(p)) rmSync(p);
   }
+  rmSync(tmpDir, { recursive: true, force: true });
 });
 
 describe("updateFile", () => {
@@ -58,12 +60,49 @@ describe("updateFile", () => {
     const node = db.prepare("SELECT * FROM nodes WHERE id = ?").get(`${filePath}::baz`);
     expect(node).toBeUndefined(); // baz ノードが消えている
   });
+
+  it("ファイルが存在しない場合はノードとハッシュを削除して 'skipped' を返す", () => {
+    const filePath = path.join(tmpDir, "d.ts");
+    writeFileSync(filePath, "export function gone() {}");
+    updateFile(db, filePath);
+
+    // ファイルを削除
+    rmSync(filePath);
+    const result = updateFile(db, filePath);
+
+    expect(result).toBe("skipped");
+    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all(filePath);
+    expect(nodes.length).toBe(0);
+    const hash = db.prepare("SELECT * FROM file_hashes WHERE file = ?").get(filePath);
+    expect(hash).toBeUndefined();
+  });
+
+  it("削除後に同名ファイルが同じ内容で再作成されたらグラフを更新する", () => {
+    const filePath = path.join(tmpDir, "e.ts");
+    const content = "export function revived() {}";
+    writeFileSync(filePath, content);
+    updateFile(db, filePath);
+
+    // ファイルを削除してハッシュをクリア
+    rmSync(filePath);
+    updateFile(db, filePath);
+
+    // 同じ内容で再作成 → ハッシュがないので 'updated' になる
+    writeFileSync(filePath, content);
+    const result = updateFile(db, filePath);
+
+    expect(result).toBe("updated");
+    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all(filePath);
+    expect(nodes.length).toBeGreaterThan(0);
+  });
 });
 
 describe("buildFullGraph", () => {
   it("複数 tsconfig のノードを単一 DB にマージする", () => {
     // フィクスチャ1: temp ディレクトリに a.ts
-    const dir1 = path.join(os.tmpdir(), `ts-rg-fixture1-${Date.now()}`);
+    const dir1 = path.join(os.tmpdir(), `ts-rg-fixture1-${randomUUID()}`);
+    const dir2 = path.join(os.tmpdir(), `ts-rg-fixture2-${randomUUID()}`);
+    try {
     mkdirSync(dir1, { recursive: true });
     writeFileSync(
       path.join(dir1, "a.ts"),
@@ -75,7 +114,6 @@ describe("buildFullGraph", () => {
     );
 
     // フィクスチャ2: 別 temp ディレクトリに b.ts
-    const dir2 = path.join(os.tmpdir(), `ts-rg-fixture2-${Date.now()}`);
     mkdirSync(dir2, { recursive: true });
     writeFileSync(
       path.join(dir2, "b.ts"),
@@ -101,6 +139,10 @@ describe("buildFullGraph", () => {
       .prepare("SELECT * FROM nodes WHERE name = 'greetB'")
       .get();
     expect(bNode).toBeTruthy();
+    } finally {
+      rmSync(dir1, { recursive: true, force: true });
+      rmSync(dir2, { recursive: true, force: true });
+    }
   });
 
   it("空配列を渡した場合はノードを挿入しない", () => {

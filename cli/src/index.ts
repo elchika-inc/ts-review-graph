@@ -60,26 +60,34 @@ program
     // 2. ignore ファイル生成
     const ignoreFile = path.join(graphDir, "ignore");
     if (!existsSync(ignoreFile)) {
-      writeFileSync(ignoreFile, "node_modules\ndist\n*.d.ts\n.next\n.nuxt\n");
+      try {
+        writeFileSync(ignoreFile, "node_modules\ndist\n*.d.ts\n.next\n.nuxt\n");
+      } catch (err) {
+        console.warn(`⚠ ignore ファイルの作成に失敗しました: ${err instanceof Error ? err.message : err}`);
+      }
     }
 
     // 3. .gitignore を graph.db のみ除外に変更
     const gitignorePath = path.join(projectRoot, ".gitignore");
     if (existsSync(gitignorePath)) {
-      let content = readFileSync(gitignorePath, "utf-8");
-      if (content.includes("# ts-review-graph\n.ts-review-graph/\n")) {
-        content = content.replace(
-          "# ts-review-graph\n.ts-review-graph/\n",
-          "# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db\n"
-        );
-        writeFileSync(gitignorePath, content);
-        console.log("✓ .gitignore を更新しました（graph.db のみ除外）");
-      } else if (!content.includes(".ts-review-graph/graph.db")) {
-        appendFileSync(
-          gitignorePath,
-          "\n# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db\n"
-        );
-        console.log("✓ .gitignore に .ts-review-graph/graph.db を追記しました");
+      try {
+        let content = readFileSync(gitignorePath, "utf-8");
+        if (content.includes("# ts-review-graph\n.ts-review-graph/\n")) {
+          content = content.replace(
+            "# ts-review-graph\n.ts-review-graph/\n",
+            "# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db\n"
+          );
+          writeFileSync(gitignorePath, content);
+          console.log("✓ .gitignore を更新しました（graph.db のみ除外）");
+        } else if (!content.includes(".ts-review-graph/graph.db")) {
+          appendFileSync(
+            gitignorePath,
+            "\n# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db\n"
+          );
+          console.log("✓ .gitignore に .ts-review-graph/graph.db を追記しました");
+        }
+      } catch (err) {
+        console.warn(`⚠ .gitignore の更新に失敗しました: ${err instanceof Error ? err.message : err}`);
       }
     }
 
@@ -121,7 +129,7 @@ program
 
     // 6. 初回グラフビルド — 成功後にのみ .mcp.json を書き込む
     console.log(`... 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
-    let db;
+    let db: ReturnType<typeof openDb> | undefined;
     try {
       db = openDb(dbPath);
     } catch (err) {
@@ -129,16 +137,21 @@ program
       process.exit(1);
     }
     try {
-      buildFullGraph(db, existingPaths);
-      const { nodeCount } = db
+      buildFullGraph(db!, existingPaths);
+    } catch (err) {
+      console.error("⚠ グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
+      db?.close();
+      process.exit(1);
+    }
+    try {
+      const { nodeCount } = db!
         .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
         .get() as { nodeCount: number };
       console.log(`✓ グラフ構築完了 (${nodeCount} nodes)`);
-    } catch (err) {
-      console.error("⚠ グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
-      process.exit(1);
+    } catch {
+      console.log("✓ グラフ構築完了");
     } finally {
-      db.close();
+      db?.close();
     }
 
     // 7. MCP サーバーを .mcp.json に登録 — グラフ構築成功後のみ実行
@@ -200,12 +213,12 @@ program
       console.error(`tsconfig ファイルが見つかりません: ${tsconfigPaths.join(", ")}`);
       process.exit(1);
     }
-    const skippedPaths = tsconfigPaths.filter((p) => !existsSync(p));
+    const skippedPaths = tsconfigPaths.filter((p) => !existingPaths.includes(p));
     if (skippedPaths.length > 0) {
       console.warn(`⚠ 見つからない tsconfig をスキップします: ${skippedPaths.join(", ")}`);
     }
 
-    let db;
+    let db: ReturnType<typeof openDb> | undefined;
     try {
       db = openDb(dbPath);
     } catch (err) {
@@ -214,24 +227,25 @@ program
     }
     try {
       const startMs = Date.now();
-      buildFullGraph(db, existingPaths);
+      buildFullGraph(db!, existingPaths);
       const elapsed = Date.now() - startMs;
-
-      const { nodeCount } = db
-        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-        .get() as { nodeCount: number };
-      const { edgeCount } = db
-        .prepare("SELECT COUNT(*) as edgeCount FROM edges")
-        .get() as { edgeCount: number };
-
-      console.log(
-        `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`
-      );
+      console.log(`グラフ構築完了 (${elapsed}ms)`);
     } catch (err) {
       console.error("グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
       process.exit(1);
+    }
+    try {
+      const { nodeCount } = db!
+        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+        .get() as { nodeCount: number };
+      const { edgeCount } = db!
+        .prepare("SELECT COUNT(*) as edgeCount FROM edges")
+        .get() as { edgeCount: number };
+      console.log(`  ${nodeCount} nodes, ${edgeCount} edges`);
+    } catch {
+      // 統計取得の失敗はグラフ構築の成否に影響しない
     } finally {
-      db.close();
+      db?.close();
     }
   });
 
@@ -258,7 +272,7 @@ program
       process.exit(1);
     }
 
-    let db;
+    let db: ReturnType<typeof openDb> | undefined;
     try {
       db = openDb(dbPath);
     } catch (err) {
@@ -266,7 +280,7 @@ program
       process.exit(1);
     }
     try {
-      const result = updateFile(db, resolvedFile);
+      const result = updateFile(db!, resolvedFile);
       if (result === "skipped") {
         console.log(`スキップ（変更なし）: ${file}`);
       } else {
@@ -276,7 +290,7 @@ program
       console.error("更新に失敗しました:", err instanceof Error ? err.message : err);
       process.exit(1);
     } finally {
-      db.close();
+      db?.close();
     }
   });
 
@@ -297,7 +311,7 @@ program
       process.exit(1);
     }
 
-    let db;
+    let db: ReturnType<typeof openDb> | undefined;
     try {
       db = openDb(dbPath);
     } catch (err) {
@@ -305,16 +319,16 @@ program
       process.exit(1);
     }
     try {
-      const { nodeCount } = db
+      const { nodeCount } = db!
         .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
         .get() as { nodeCount: number };
-      const { edgeCount } = db
+      const { edgeCount } = db!
         .prepare("SELECT COUNT(*) as edgeCount FROM edges")
         .get() as { edgeCount: number };
-      const { fileCount } = db
+      const { fileCount } = db!
         .prepare("SELECT COUNT(*) as fileCount FROM file_hashes")
         .get() as { fileCount: number };
-      const latest = db
+      const latest = db!
         .prepare("SELECT MAX(updated_at) as t FROM file_hashes")
         .get() as { t: number | null };
 
@@ -329,7 +343,7 @@ program
       console.error("ステータス取得に失敗しました:", err instanceof Error ? err.message : err);
       process.exit(1);
     } finally {
-      db.close();
+      db?.close();
     }
   });
 

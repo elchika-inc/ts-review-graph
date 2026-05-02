@@ -43,9 +43,10 @@ export function getTypeUsages(
     };
   }
 
+  const safeTypeName = typeName.replace(/[\r\n]/g, "");
   const truncated = rows.length > MAX_TYPE_RESULTS;
   const display = truncated ? rows.slice(0, MAX_TYPE_RESULTS) : rows;
-  const lines = display.map((r) => `${r.file}::${r.name.replace(/[\r\n]/g, "")}  [${r.kind}]`);
+  const lines = display.map((r) => `${r.file.replace(/[\r\n]/g, "")}::${r.name.replace(/[\r\n]/g, "")}  [${r.kind}]`);
   if (truncated) lines.push(`... (truncated at ${MAX_TYPE_RESULTS} results — use a more specific type name)`);
   return {
     content: [
@@ -53,8 +54,8 @@ export function getTypeUsages(
         type: "text",
         text:
           lines.length > 0
-            ? `Usages of type '${typeName}':\n${lines.join("\n")}`
-            : `No usages found for type '${typeName}'`,
+            ? `Usages of type '${safeTypeName}':\n${lines.join("\n")}`
+            : `No usages found for type '${safeTypeName}'`,
       },
     ],
   };

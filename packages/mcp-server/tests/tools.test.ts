@@ -4,6 +4,7 @@ import { registerTools } from "../src/tools/index.js";
 import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 
 const FIXTURE_TSCONFIG = new URL(
   "../../core/tests/fixtures/simple/tsconfig.json",
@@ -13,17 +14,22 @@ const FIXTURE_TSCONFIG = new URL(
 // プロジェクトルートを擬似的に作成し、DB パスを nested に設定する。
 // resolveFilePath は TS_REVIEW_GRAPH_DB から projectRoot を逆算するため、
 // DB が <projectRoot>/.ts-review-graph/graph.db に配置される形にする。
-const TEST_PROJECT_ROOT = `/tmp/ts-rg-tools-test-${Date.now()}`;
-const TEST_DB = path.join(TEST_PROJECT_ROOT, ".ts-review-graph", "graph.db");
-
-// 本番の analyzeProject と同様に絶対パスでファイルを登録する
-const IMPL_FILE = path.join(TEST_PROJECT_ROOT, "impl.ts");
-const DEP_FILE = path.join(TEST_PROJECT_ROOT, "dep.ts");
-const TEST_FILE = path.join(TEST_PROJECT_ROOT, "impl.test.ts");
+// randomUUID() で並列実行時のパス衝突を防ぐ。
+let TEST_PROJECT_ROOT: string;
+let TEST_DB: string;
+let IMPL_FILE: string;
+let DEP_FILE: string;
+let TEST_FILE: string;
 
 let db: ReturnType<typeof openDb>;
 
 beforeEach(() => {
+  TEST_PROJECT_ROOT = `/tmp/ts-rg-tools-test-${randomUUID()}`;
+  TEST_DB = path.join(TEST_PROJECT_ROOT, ".ts-review-graph", "graph.db");
+  IMPL_FILE = path.join(TEST_PROJECT_ROOT, "impl.ts");
+  DEP_FILE = path.join(TEST_PROJECT_ROOT, "dep.ts");
+  TEST_FILE = path.join(TEST_PROJECT_ROOT, "impl.test.ts");
+
   // TS_REVIEW_GRAPH_DB を設定して resolveFilePath がプロジェクトルートを正しく解決できるようにする
   process.env["TS_REVIEW_GRAPH_DB"] = TEST_DB;
 
@@ -58,10 +64,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env["TS_REVIEW_GRAPH_DB"];
   db.close();
-  for (const ext of ["", "-wal", "-shm"]) {
-    const p = TEST_DB + ext;
-    if (existsSync(p)) rmSync(p);
-  }
+  rmSync(TEST_PROJECT_ROOT, { recursive: true, force: true });
 });
 
 describe("registerTools", () => {
@@ -250,10 +253,9 @@ describe("get_impact", () => {
   it("get_impact: 変更ファイル自身は結果に含まれない", () => {
     const result = registerTools(db, "get_impact", { changed_file: IMPL_FILE });
     expect(result.isError).toBeFalsy();
-    // 変更ファイル自身はフィルタアウトされる
-    const lines = result.content[0].text.split("\n");
-    const selfLine = lines.find((l) => l.includes("impl.ts") && !l.includes("impl.test.ts") && !l.startsWith("Impact of"));
-    expect(selfLine).toBeUndefined();
+    // ヘッダー行 "Impact of ..." を除いた本文に変更ファイル自身のパスが現れないことを確認
+    const body = result.content[0].text.split("\n").slice(1).join("\n");
+    expect(body).not.toContain(IMPL_FILE);
   });
 
   it("get_impact: 依存元がないファイルは 'No dependents found' を返す", () => {
@@ -372,7 +374,7 @@ describe("query_graph", () => {
 
 describe("build_graph", () => {
   it("build_graph: 実際の tsconfig からグラフを構築し、ノードを含む DB を返す", () => {
-    const buildDbPath = `/tmp/ts-rg-mcp-build-test-${Date.now()}.db`;
+    const buildDbPath = `/tmp/ts-rg-mcp-build-test-${randomUUID()}.db`;
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
 
@@ -406,7 +408,7 @@ describe("build_graph", () => {
   });
 
   it("build_graph: 同じ tsconfig で2回実行しても冪等（ノード数が増加しない）", () => {
-    const buildDbPath = `/tmp/ts-rg-mcp-build-idempotent-${Date.now()}.db`;
+    const buildDbPath = `/tmp/ts-rg-mcp-build-idempotent-${randomUUID()}.db`;
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
 
@@ -444,7 +446,7 @@ describe("build_graph", () => {
   });
 
   it("build_graph: config.json が存在する場合はそこから tsconfigs を読み込む", () => {
-    const tmpRoot = `/tmp/ts-rg-config-test-${Date.now()}`;
+    const tmpRoot = `/tmp/ts-rg-config-test-${randomUUID()}`;
     const configDir = path.join(tmpRoot, ".ts-review-graph");
     const configPath = path.join(configDir, "config.json");
     const buildDbPath = path.join(configDir, "graph.db");
@@ -678,5 +680,29 @@ describe("get_type_usages MAX_TYPE_RESULTS 打ち切り", () => {
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("truncated at 500 results");
     expect(result.content[0].text).toContain("use a more specific type name");
+  });
+});
+
+describe("出力サニタイズ（改行インジェクション対策）", () => {
+  it("query_graph: from に改行が含まれてもレスポンステキストに改行が混入しない", () => {
+    const result = registerTools(db, "query_graph", {
+      from: `${IMPL_FILE}\nevil-injection`,
+      direction: "forward",
+      depth: 1,
+    });
+    // from が DB に存在しないため結果は空だが、isError にならない
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0].text;
+    // from= の値部分に改行が混入していないこと
+    expect(text).not.toMatch(/from=.*\nevil-injection/);
+  });
+
+  it("get_type_usages: type_name に改行が含まれてもレスポンステキストに混入しない", () => {
+    const result = registerTools(db, "get_type_usages", {
+      type_name: "SafeType\nevil-injection",
+    });
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0].text;
+    expect(text).not.toContain("\nevil-injection");
   });
 });

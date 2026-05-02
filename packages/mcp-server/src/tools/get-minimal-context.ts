@@ -88,7 +88,8 @@ function resolveFilePath(file: string): string {
     // ENOENT: ファイルが存在しない場合はシンボリックリンクバイパス不可 — 許容
     if (e instanceof Error && (e as NodeJS.ErrnoException).code === "ENOENT") return resolved;
     // EACCES / ELOOP 等: シンボリックリンク検証が不可 — fail-closed
-    throw new Error(`Path safety check failed: ${file}`);
+    const code = (e as NodeJS.ErrnoException).code ?? "unknown";
+    throw new Error(`Path safety check failed (${code}): ${file}`);
   }
 
   return resolved;

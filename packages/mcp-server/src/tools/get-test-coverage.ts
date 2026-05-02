@@ -42,9 +42,10 @@ export function getTestCoverage(
     };
   }
 
+  const safeFile = file.replace(/[\r\n]/g, "");
   const truncated = rows.length > MAX_TEST_RESULTS;
   const display = truncated ? rows.slice(0, MAX_TEST_RESULTS) : rows;
-  const lines = display.map((r) => r.file);
+  const lines = display.map((r) => r.file.replace(/[\r\n]/g, ""));
   if (truncated) lines.push(`... (truncated at ${MAX_TEST_RESULTS} results)`);
 
   return {
@@ -53,8 +54,8 @@ export function getTestCoverage(
         type: "text",
         text:
           lines.length > 0
-            ? `Test files for '${file}':\n${lines.join("\n")}`
-            : `No test files found for '${file}'`,
+            ? `Test files for '${safeFile}':\n${lines.join("\n")}`
+            : `No test files found for '${safeFile}'`,
       },
     ],
   };

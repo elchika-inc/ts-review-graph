@@ -99,23 +99,23 @@ export function queryGraph(
       ? (stmt.all({ from, depth, edgeKind }) as typeof rows)
       : (stmt.all({ from, depth }) as typeof rows);
   } catch (err) {
-    queryGraphStmtCache.delete(db);
     return {
       content: [{ type: "text", text: `グラフクエリに失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
       isError: true,
     };
   }
 
+  const sanitize = (s: string) => s.replace(/[\r\n]/g, "");
   const truncated = rows.length > MAX_RESULTS;
   const display = truncated ? rows.slice(0, MAX_RESULTS) : rows;
-  const lines = display.map((r) => `${r.file}::${r.name.replace(/[\r\n]/g, "")}  [${r.kind}]`);
+  const lines = display.map((r) => `${sanitize(r.file)}::${sanitize(r.name)}  [${sanitize(r.kind)}]`);
   if (truncated) lines.push(`... (truncated at ${MAX_RESULTS} results — narrow with edge_kind or reduce depth)`);
 
   return {
     content: [
       {
         type: "text",
-        text: `Query result (from=${from}, direction=${direction}, depth=${depth}):\n${lines.join("\n") || "(empty)"}`,
+        text: `Query result (from=${sanitize(from)}, direction=${direction}, depth=${depth}):\n${lines.join("\n") || "(empty)"}`,
       },
     ],
   };

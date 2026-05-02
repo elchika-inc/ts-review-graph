@@ -9,13 +9,6 @@ function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
-function getStoredHash(db: Db, file: string): string | undefined {
-  const row = db
-    .prepare("SELECT hash FROM file_hashes WHERE file = ?")
-    .get(file) as { hash: string } | undefined;
-  return row?.hash;
-}
-
 const INSERT_NODE = `
   INSERT OR REPLACE INTO nodes (id, kind, name, file, line, signature, type_refs)
   VALUES (@id, @kind, @name, @file, @line, @signature, @typeRefs)
@@ -32,8 +25,53 @@ const UPSERT_HASH = `
   ON CONFLICT(file) DO UPDATE SET hash = excluded.hash, updated_at = excluded.updated_at
 `;
 
+const updateStmtCache = new WeakMap<Db, {
+  getHash: ReturnType<Db["prepare"]>;
+  deleteNodes: ReturnType<Db["prepare"]>;
+  deleteHash: ReturnType<Db["prepare"]>;
+  insertNode: ReturnType<Db["prepare"]>;
+  insertEdge: ReturnType<Db["prepare"]>;
+  selectNodeExists: ReturnType<Db["prepare"]>;
+  upsertHash: ReturnType<Db["prepare"]>;
+  deleteAllEdges: ReturnType<Db["prepare"]>;
+  deleteAllNodes: ReturnType<Db["prepare"]>;
+  deleteAllHashes: ReturnType<Db["prepare"]>;
+}>();
+
+function getUpdateStmts(db: Db) {
+  let stmts = updateStmtCache.get(db);
+  if (!stmts) {
+    stmts = {
+      getHash: db.prepare("SELECT hash FROM file_hashes WHERE file = ?"),
+      deleteNodes: db.prepare("DELETE FROM nodes WHERE file = ?"),
+      deleteHash: db.prepare("DELETE FROM file_hashes WHERE file = ?"),
+      insertNode: db.prepare(INSERT_NODE),
+      insertEdge: db.prepare(INSERT_EDGE),
+      selectNodeExists: db.prepare("SELECT 1 FROM nodes WHERE id = ?"),
+      upsertHash: db.prepare(UPSERT_HASH),
+      deleteAllEdges: db.prepare("DELETE FROM edges"),
+      deleteAllNodes: db.prepare("DELETE FROM nodes"),
+      deleteAllHashes: db.prepare("DELETE FROM file_hashes"),
+    };
+    updateStmtCache.set(db, stmts);
+  }
+  return stmts;
+}
+
+function getStoredHash(db: Db, file: string): string | undefined {
+  const row = getUpdateStmts(db).getHash.get(file) as { hash: string } | undefined;
+  return row?.hash;
+}
+
 export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
-  if (!existsSync(filePath)) return "skipped";
+  if (!existsSync(filePath)) {
+    const stmts = getUpdateStmts(db);
+    db.transaction(() => {
+      stmts.deleteNodes.run(filePath);
+      stmts.deleteHash.run(filePath);
+    })();
+    return "skipped";
+  }
 
   const content = readFileSync(filePath, "utf-8");
   const newHash = sha256(content);
@@ -45,11 +83,7 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
   const project = new Project({ skipAddingFilesFromTsConfig: true });
   const sf = project.addSourceFileAtPath(filePath);
 
-  const insertNode = db.prepare(INSERT_NODE);
-  const insertEdge = db.prepare(INSERT_EDGE);
-  const deleteNodesByFile = db.prepare("DELETE FROM nodes WHERE file = ?");
-  const selectNodeExists = db.prepare("SELECT 1 FROM nodes WHERE id = ?");
-  const upsertHash = db.prepare(UPSERT_HASH);
+  const { insertNode, insertEdge, deleteNodes: deleteNodesByFile, selectNodeExists, upsertHash } = getUpdateStmts(db);
 
   const run = db.transaction(() => {
     // 古いノードを削除（ON DELETE CASCADE がエッジも消す）
@@ -155,13 +189,7 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
 }
 
 export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
-  const insertNode = db.prepare(INSERT_NODE);
-  const insertEdge = db.prepare(INSERT_EDGE);
-  const upsertHash = db.prepare(UPSERT_HASH);
-
-  const deleteEdges = db.prepare("DELETE FROM edges");
-  const deleteNodes = db.prepare("DELETE FROM nodes");
-  const deleteHashes = db.prepare("DELETE FROM file_hashes");
+  const { insertNode, insertEdge, upsertHash, deleteAllEdges, deleteAllNodes, deleteAllHashes } = getUpdateStmts(db);
 
   const now = Date.now();
 
@@ -170,9 +198,9 @@ export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
   const allResults = tsconfigPaths.map((p) => analyzeProject(p));
 
   const runAll = db.transaction(() => {
-    deleteEdges.run();
-    deleteNodes.run();
-    deleteHashes.run();
+    deleteAllEdges.run();
+    deleteAllNodes.run();
+    deleteAllHashes.run();
 
     for (const { nodes, edges, fileHashes } of allResults) {
       for (const n of nodes) {

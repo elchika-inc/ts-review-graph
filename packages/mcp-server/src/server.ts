@@ -43,11 +43,14 @@ async function main(): Promise<void> {
       const result = registerTools(db, request.params.name, request.params.arguments ?? {});
 
       // build_graph が成功した後、DB ファイルが存在すれば接続を初期化/再オープンする
-      if (request.params.name === "build_graph" && !result.isError && existsSync(DB_PATH)) {
+      if (request.params.name === "build_graph" && result.isError !== true && existsSync(DB_PATH)) {
         try {
           const newDb = openDb(DB_PATH);
-          db?.close();
+          const oldDb = db;
           db = newDb;
+          try { oldDb?.close(); } catch (closeErr) {
+            console.error(`[ts-review-graph] 旧 DB クローズに失敗: ${closeErr instanceof Error ? closeErr.message : String(closeErr)}`);
+          }
         } catch (err) {
           console.error(`[ts-review-graph] ビルド後の DB 再接続に失敗: ${err instanceof Error ? err.message : String(err)}`);
         }
