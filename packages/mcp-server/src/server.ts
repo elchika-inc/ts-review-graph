@@ -8,7 +8,11 @@ import {
 import { openDb } from "@ts-review-graph/core";
 import { registerTools, TOOL_DEFINITIONS } from "./tools/index.js";
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
+const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
 
 const DB_PATH =
   process.env["TS_REVIEW_GRAPH_DB"] ??
@@ -16,7 +20,7 @@ const DB_PATH =
 
 async function main(): Promise<void> {
   const server = new Server(
-    { name: "ts-review-graph", version: "0.2.0" },
+    { name: "ts-review-graph", version: _version },
     { capabilities: { tools: {} } }
   );
 

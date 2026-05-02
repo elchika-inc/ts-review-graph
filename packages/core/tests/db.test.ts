@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { openDb } from "../src/db.js";
 import { rmSync, existsSync } from "node:fs";
 
-const TEST_DB = "/tmp/ts-review-graph-test.db";
+const TEST_DB = `/tmp/ts-review-graph-test-${Date.now()}.db`;
 
 afterEach(() => {
   for (const ext of ["", "-wal", "-shm"]) {

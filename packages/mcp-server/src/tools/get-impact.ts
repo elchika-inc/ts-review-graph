@@ -13,7 +13,8 @@ export function getImpact(db: Db, args: Record<string, unknown>): ToolResult {
     };
   }
 
-  const nodes = computeBlastRadius(db, changedFile, DEPTH_FOR_MODE("debug"));
+  const nodes = computeBlastRadius(db, changedFile, DEPTH_FOR_MODE("debug"))
+    .filter((n) => n.file !== changedFile);
 
   const truncated = nodes.slice(0, MAX_RESULTS);
   const suffix =

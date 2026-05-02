@@ -1,6 +1,7 @@
 import { computeBlastRadius, computeForwardDeps, DEPTH_FOR_MODE } from "@ts-review-graph/core";
 import type { Db } from "@ts-review-graph/core";
 import path from "node:path";
+import { realpathSync } from "node:fs";
 import type { ToolResult } from "./types.js";
 
 const VALID_MODES = ["review", "implement", "debug"] as const;
@@ -43,6 +44,7 @@ function validateArgs(args: Record<string, unknown>): ValidatedArgs | ToolResult
 // 相対/絶対パスをプロジェクトルート基準の絶対パスに変換する
 // DB_PATH = <root>/.ts-review-graph/graph.db なので dirname の親がルート
 // パストラバーサル（../../）や絶対パス指定によるプロジェクト外アクセスを防ぐ
+// シンボリックリンクバイパス対策: ファイルが存在する場合は realpathSync で検証する
 function resolveFilePath(file: string): string {
   const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
   // TS_REVIEW_GRAPH_DB 未設定時は process.cwd() をプロジェクトルートとして使用
@@ -54,9 +56,24 @@ function resolveFilePath(file: string): string {
     ? path.normalize(file)
     : path.resolve(projectRoot, file);
 
+  // 第1チェック: 正規化パスによるトラバーサル検出
   if (!resolved.startsWith(projectRoot + path.sep) && resolved !== projectRoot) {
     throw new Error(`Path traversal detected: ${file}`);
   }
+
+  // 第2チェック: ファイルが存在する場合のシンボリックリンクバイパス検出
+  // (存在しないファイルはシンボリックリンクにはなれない)
+  try {
+    const realResolved = realpathSync(resolved);
+    const realProjectRoot = realpathSync(projectRoot);
+    if (!realResolved.startsWith(realProjectRoot + path.sep) && realResolved !== realProjectRoot) {
+      throw new Error(`Path traversal detected: ${file}`);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("Path traversal")) throw e;
+    // ENOENT など — ファイルが存在しない場合はシンボリックリンクバイパス不可
+  }
+
   return resolved;
 }
 
@@ -65,7 +82,7 @@ export function getMinimalContext(
   args: Record<string, unknown>
 ): ToolResult {
   const validated = validateArgs(args);
-  if ("isError" in validated) return validated;
+  if (!("files" in validated)) return validated;
 
   const { files: rawFiles, mode } = validated;
   const changedFiles = rawFiles.map(resolveFilePath);
@@ -123,7 +140,7 @@ export function getMinimalContext(
       }
     }
 
-    const shownCount = displayedReverse.length + forwardFiles.size;
+    const shownCount = reverseFiles.size + forwardFiles.size;
     lines.push(``, `SKIP: ${Math.max(0, totalFiles - shownCount)} other files — not in blast radius`);
   } else {
     lines.push(`READ THESE FILES ONLY (${reverseFiles.size} files, mode=${mode}, depth=${maxDepth}):`);

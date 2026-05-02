@@ -86,7 +86,7 @@ SKIP: 1170 other files — not in blast radius
 | `get_type_usages` | `type_name` | 型を参照するノード一覧 |
 | `get_test_coverage` | `file` | 対応するテストファイル一覧 |
 | `query_graph` | `from`, `edge_kind`, `direction`, `depth` | 汎用グラフ探索 |
-| `build_graph` | `tsconfig_path` | グラフを再構築 |
+| `build_graph` | `tsconfigs` | グラフを再構築 |
 | `graph_status` | — | グラフ統計を表示 |
 
 ### モード別 BFS 深さ

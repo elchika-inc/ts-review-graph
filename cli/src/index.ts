@@ -9,6 +9,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
+const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
 
 const CONFIG_FILE_NAME = ".ts-review-graph/config.json";
 
@@ -21,7 +25,8 @@ function readConfig(projectRoot: string): TsReviewGraphConfig | null {
   if (!existsSync(configPath)) return null;
   try {
     return JSON.parse(readFileSync(configPath, "utf-8")) as TsReviewGraphConfig;
-  } catch {
+  } catch (err) {
+    console.warn(`⚠ config.json の読み込みに失敗しました: ${err instanceof Error ? err.message : err}`);
     return null;
   }
 }
@@ -32,7 +37,7 @@ function writeConfig(projectRoot: string, config: TsReviewGraphConfig): void {
 }
 
 const program = new Command();
-program.name("ts-review-graph").version("0.2.0");
+program.name("ts-review-graph").version(_version);
 
 // --- install ---
 program

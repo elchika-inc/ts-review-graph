@@ -3,7 +3,7 @@ import { openDb } from "../src/db.js";
 import { computeBlastRadius, computeForwardDeps } from "../src/blast.js";
 import { rmSync, existsSync } from "node:fs";
 
-const TEST_DB = "/tmp/ts-review-graph-blast-test.db";
+const TEST_DB = `/tmp/ts-review-graph-blast-test-${Date.now()}.db`;
 
 function insertNode(db: ReturnType<typeof openDb>, id: string, file: string) {
   db.prepare(

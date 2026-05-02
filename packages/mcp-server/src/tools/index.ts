@@ -32,7 +32,7 @@ export const TOOL_DEFINITIONS = [
           description: "review=check impact, implement=plan changes across layers, debug=deep trace",
         },
       },
-      required: ["changed_files", "mode"],
+      required: ["changed_files"],
     },
   },
   {
@@ -120,6 +120,7 @@ export const TOOL_DEFINITIONS = [
           description: "Optional: single tsconfig.json path (deprecated — use tsconfigs for multi-tsconfig projects)",
         },
       },
+      required: [],
     },
   },
   {

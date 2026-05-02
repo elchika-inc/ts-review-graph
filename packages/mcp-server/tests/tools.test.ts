@@ -3,6 +3,12 @@ import { openDb } from "@ts-review-graph/core";
 import { registerTools } from "../src/tools/index.js";
 import { rmSync, existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const FIXTURE_TSCONFIG = new URL(
+  "../../core/tests/fixtures/simple/tsconfig.json",
+  import.meta.url
+).pathname;
 
 // プロジェクトルートを擬似的に作成し、DB パスを nested に設定する。
 // resolveFilePath は TS_REVIEW_GRAPH_DB から projectRoot を逆算するため、
@@ -188,5 +194,109 @@ describe("get_minimal_context 引数バリデーション", () => {
         mode: "review",
       })
     ).toThrow("Path traversal detected");
+  });
+});
+
+describe("get_impact", () => {
+  it("get_impact: テストファイルを含む依存先を返す", () => {
+    const result = registerTools(db, "get_impact", { changed_file: IMPL_FILE });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("impl.test.ts");
+  });
+
+  it("get_impact: 変更ファイル自身は結果に含まれない", () => {
+    const result = registerTools(db, "get_impact", { changed_file: IMPL_FILE });
+    expect(result.isError).toBeFalsy();
+    // 変更ファイル自身 (depth=0) はフィルタアウトされる
+    const lines = result.content[0].text.split("\n");
+    const selfLine = lines.find((l) => l.includes("impl.ts") && l.includes("depth=0"));
+    expect(selfLine).toBeUndefined();
+  });
+});
+
+describe("get_type_usages", () => {
+  it("get_type_usages: 型が見つからない場合はメッセージを返す", () => {
+    const result = registerTools(db, "get_type_usages", { type_name: "NonExistentType" });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No usages found for type");
+  });
+
+  it("get_type_usages: type_refs にマッチするノードを返す", () => {
+    const typedFile = path.join(TEST_PROJECT_ROOT, "typed.ts");
+    db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    ).run("typed::__file__", "file", "typed.ts", typedFile, 1, '["MonitorConfig","string"]');
+
+    const result = registerTools(db, "get_type_usages", { type_name: "MonitorConfig" });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("MonitorConfig");
+    expect(result.content[0].text).toContain("typed.ts");
+  });
+});
+
+describe("query_graph", () => {
+  it("query_graph: FORWARD 方向で直接依存を返す", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "forward",
+      edge_kind: "IMPORTS_FROM",
+      depth: 1,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("dep.ts");
+  });
+
+  it("query_graph: REVERSE 方向で HAS_TEST エッジが含まれる", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "forward",
+      edge_kind: "HAS_TEST",
+      depth: 1,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("impl.test.ts");
+  });
+
+  it("query_graph: 不正な edge_kind は isError を返す", () => {
+    const result = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      edge_kind: "INVALID_KIND",
+    });
+    expect(result.isError).toBe(true);
+  });
+});
+
+describe("build_graph", () => {
+  it("build_graph: 実際の tsconfig からグラフを構築する", () => {
+    const buildDbPath = `/tmp/ts-rg-mcp-build-test-${Date.now()}.db`;
+    const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
+    process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
+
+    try {
+      const result = registerTools(null, "build_graph", {
+        tsconfigs: [FIXTURE_TSCONFIG],
+      });
+      expect(result.isError).toBeFalsy();
+      expect(result.content[0].text).toContain("nodes");
+      expect(result.content[0].text).toContain("edges");
+    } finally {
+      if (prevDb !== undefined) {
+        process.env["TS_REVIEW_GRAPH_DB"] = prevDb;
+      } else {
+        delete process.env["TS_REVIEW_GRAPH_DB"];
+      }
+      for (const ext of ["", "-wal", "-shm"]) {
+        const p = buildDbPath + ext;
+        if (existsSync(p)) rmSync(p);
+      }
+    }
+  });
+
+  it("build_graph: 存在しない tsconfig は isError を返す", () => {
+    const result = registerTools(null, "build_graph", {
+      tsconfigs: ["/nonexistent/tsconfig.json"],
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("tsconfig.json not found");
   });
 });
