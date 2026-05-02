@@ -25,6 +25,9 @@ const UPSERT_HASH = `
   ON CONFLICT(file) DO UPDATE SET hash = excluded.hash, updated_at = excluded.updated_at
 `;
 
+// パラメータなし DELETE 文用の最小インタフェース（better-sqlite3 型定義の制約回避）
+interface NoParamStmt { run(): unknown }
+
 const updateStmtCache = new WeakMap<Db, {
   getHash: ReturnType<Db["prepare"]>;
   deleteNodes: ReturnType<Db["prepare"]>;
@@ -33,9 +36,9 @@ const updateStmtCache = new WeakMap<Db, {
   insertEdge: ReturnType<Db["prepare"]>;
   selectNodeExists: ReturnType<Db["prepare"]>;
   upsertHash: ReturnType<Db["prepare"]>;
-  deleteAllEdges: ReturnType<Db["prepare"]>;
-  deleteAllNodes: ReturnType<Db["prepare"]>;
-  deleteAllHashes: ReturnType<Db["prepare"]>;
+  deleteAllEdges: NoParamStmt;
+  deleteAllNodes: NoParamStmt;
+  deleteAllHashes: NoParamStmt;
 }>();
 
 function getUpdateStmts(db: Db) {
