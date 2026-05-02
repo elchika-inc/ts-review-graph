@@ -118,6 +118,9 @@ program
           .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
           .get() as { nodeCount: number };
         console.log(`✓ グラフ構築完了 (${nodeCount} nodes)`);
+      } catch (err) {
+        console.error("⚠ グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
+        process.exit(1);
       } finally {
         db.close();
       }
@@ -183,6 +186,9 @@ program
       console.log(
         `グラフ構築完了: ${nodeCount} nodes, ${edgeCount} edges (${elapsed}ms)`
       );
+    } catch (err) {
+      console.error("グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
+      process.exit(1);
     } finally {
       db.close();
     }

@@ -43,17 +43,47 @@ JOIN nodes n ON n.id = e.target_id
 WHERE impl.file = :changed_file
 `;
 
+const FORWARD_DEPS_SQL = `
+SELECT DISTINCT n.file, 'direct import' as reason, 1 as depth
+FROM nodes src
+JOIN edges e ON e.source_id = src.id
+  AND e.kind = 'IMPORTS_FROM'
+JOIN nodes n ON n.id = e.target_id
+WHERE src.file = :changed_file
+  AND n.file != :changed_file
+`;
+
+// Db インスタンスごとのステートメントキャッシュ — prepare() の再コンパイルを防ぐ
+const stmtCache = new WeakMap<Db, {
+  reverseBfs: ReturnType<Db["prepare"]>;
+  testLookup: ReturnType<Db["prepare"]>;
+  forwardDeps: ReturnType<Db["prepare"]>;
+}>();
+
+function getStmts(db: Db) {
+  let stmts = stmtCache.get(db);
+  if (!stmts) {
+    stmts = {
+      reverseBfs: db.prepare(REVERSE_BFS_SQL),
+      testLookup: db.prepare(TEST_LOOKUP_SQL),
+      forwardDeps: db.prepare(FORWARD_DEPS_SQL),
+    };
+    stmtCache.set(db, stmts);
+  }
+  return stmts;
+}
+
 export function computeBlastRadius(
   db: Db,
   changedFile: string,
   maxDepth: number
 ): BlastNode[] {
-  const reverseNodes = db
-    .prepare(REVERSE_BFS_SQL)
+  const { reverseBfs, testLookup } = getStmts(db);
+
+  const reverseNodes = reverseBfs
     .all({ changed_file: changedFile, max_depth: maxDepth }) as BlastNode[];
 
-  const testNodes = db
-    .prepare(TEST_LOOKUP_SQL)
+  const testNodes = testLookup
     .all({ changed_file: changedFile }) as BlastNode[];
 
   // 重複排除（ファイルパスをキーに先着優先）
@@ -72,18 +102,8 @@ export function DEPTH_FOR_MODE(
   return depths[mode] ?? 2;
 }
 
-const FORWARD_DEPS_SQL = `
-SELECT DISTINCT n.file, 'direct import' as reason, 1 as depth
-FROM nodes src
-JOIN edges e ON e.source_id = src.id
-  AND e.kind = 'IMPORTS_FROM'
-JOIN nodes n ON n.id = e.target_id
-WHERE src.file = :changed_file
-  AND n.file != :changed_file
-`;
-
 export function computeForwardDeps(db: Db, changedFile: string): BlastNode[] {
-  return db
-    .prepare(FORWARD_DEPS_SQL)
+  const { forwardDeps } = getStmts(db);
+  return forwardDeps
     .all({ changed_file: changedFile }) as BlastNode[];
 }

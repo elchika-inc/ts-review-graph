@@ -36,9 +36,14 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
     : process.cwd();
 
   // tsconfigs (array) takes priority over legacy tsconfig (single string)
-  const rawTsconfigs = args["tsconfigs"] as string[] | undefined;
-  const rawTsconfig = args["tsconfig"] as string | undefined;
-  const argTsconfigs = rawTsconfigs ?? (rawTsconfig ? [rawTsconfig] : undefined);
+  const rawTsconfigs = args["tsconfigs"];
+  const rawTsconfig = args["tsconfig"];
+  const argTsconfigs =
+    Array.isArray(rawTsconfigs) && rawTsconfigs.every((x) => typeof x === "string")
+      ? (rawTsconfigs as string[])
+      : typeof rawTsconfig === "string"
+        ? [rawTsconfig]
+        : undefined;
   const tsconfigPaths = loadTsconfigPaths(cwd, argTsconfigs);
 
   const missing = tsconfigPaths.filter((p) => !existsSync(p));
@@ -47,7 +52,7 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
       content: [
         {
           type: "text",
-          text: `tsconfig.json が見つかりません: ${missing.join(", ")}`,
+          text: `tsconfig.json not found: ${missing.join(", ")} / tsconfig.json が見つかりません`,
         },
       ],
       isError: true,

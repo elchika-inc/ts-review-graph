@@ -6,6 +6,7 @@ import { getTestCoverage } from "./get-test-coverage.js";
 import { queryGraph } from "./query-graph.js";
 import { buildGraph } from "./build-graph.js";
 import { graphStatus } from "./graph-status.js";
+import type { ToolResult } from "./types.js";
 
 export const TOOL_DEFINITIONS = [
   {
@@ -23,7 +24,7 @@ export const TOOL_DEFINITIONS = [
         changed_files: {
           type: "array",
           items: { type: "string", description: "File path relative to project root or absolute path" },
-          description: "List of files you plan to change",
+          description: "List of files you plan to change (max 100)",
         },
         mode: {
           type: "string",
@@ -38,8 +39,8 @@ export const TOOL_DEFINITIONS = [
     name: "get_impact",
     description:
       "Return all files that depend on the given file, with the dependency reason (IMPORTS_FROM, TYPED_BY, etc.). " +
-      "Use when you need the full dependency list without depth limits. " +
-      "変更ファイルに依存するファイル一覧と依存理由を返す。",
+      "Traverses up to depth 5. Use get_minimal_context for mode-aware blast radius with fewer results. " +
+      "変更ファイルに依存するファイル一覧と依存理由を返す（最大depth=5）。",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -78,22 +79,23 @@ export const TOOL_DEFINITIONS = [
   {
     name: "query_graph",
     description:
-      "General-purpose graph traversal. Explore the dependency graph starting from a file in forward or reverse direction. " +
-      "グラフをパラメータ化クエリで探索する（汎用）。",
+      "General-purpose graph traversal. Explore the dependency graph starting from a file path in forward or reverse direction. " +
+      "Returns up to 200 results. グラフをパラメータ化クエリで探索する（汎用）。",
     inputSchema: {
       type: "object" as const,
       properties: {
         from: { type: "string", description: "Starting file path (absolute or project-root-relative)" },
         edge_kind: {
           type: "string",
-          description: "Filter by edge type: IMPORTS_FROM | TYPED_BY | IMPLEMENTS | EXTENDS | HAS_TEST (omit to include all)",
+          enum: ["IMPORTS_FROM", "TYPED_BY", "IMPLEMENTS", "EXTENDS", "HAS_TEST"],
+          description: "Filter by edge type (omit to include all). Note: HAS_TEST is forward-only (use get_test_coverage for that)",
         },
         direction: {
           type: "string",
           enum: ["forward", "reverse"],
           description: "forward=who this file depends on, reverse=who depends on this file",
         },
-        depth: { type: "number", description: "Traversal depth limit (default: 3)" },
+        depth: { type: "number", description: "Traversal depth limit (default: 3, max: 10)" },
       },
       required: ["from"],
     },
@@ -126,11 +128,9 @@ export const TOOL_DEFINITIONS = [
       "Return graph statistics: node count, edge count, and last build time. " +
       "Use to verify the graph is built before calling other tools. " +
       "グラフの統計情報（ノード数・エッジ数・最終更新）を返す。",
-    inputSchema: { type: "object" as const, properties: {} },
+    inputSchema: { type: "object" as const, properties: {}, required: [] },
   },
 ];
-
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export function registerTools(
   db: Db | null,
@@ -143,7 +143,7 @@ export function registerTools(
       content: [
         {
           type: "text",
-          text: "グラフが未構築です。まず `build_graph` ツールを呼び出してグラフを構築してください。",
+          text: "Graph not built. Call build_graph first. / グラフが未構築です。まず build_graph ツールを呼び出してください。",
         },
       ],
       isError: true,

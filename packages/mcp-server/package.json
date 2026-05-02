@@ -15,12 +15,16 @@
     "type": "git",
     "url": "https://github.com/elchika-inc/ts-review-graph"
   },
+  "homepage": "https://github.com/elchika-inc/ts-review-graph#readme",
+  "bugs": { "url": "https://github.com/elchika-inc/ts-review-graph/issues" },
   "engines": { "node": ">=20" },
   "bin": {
     "ts-review-graph-mcp": "./dist/server.js"
   },
   "scripts": {
     "build": "tsc",
+    "postbuild": "chmod +x dist/server.js",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run",
     "lint": "tsc --noEmit"
   },

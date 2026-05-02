@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "@ts-review-graph/core";
 import { registerTools } from "../src/tools/index.js";
-import { rmSync, existsSync, mkdirSync } from "node:fs";
+import { rmSync, existsSync } from "node:fs";
 import path from "node:path";
 
 // プロジェクトルートを擬似的に作成し、DB パスを nested に設定する。
@@ -145,34 +145,34 @@ describe("registerTools", () => {
 });
 
 describe("get_minimal_context 引数バリデーション", () => {
-  it("changed_files が配列でない場合はエラーをスロー", () => {
-    expect(() =>
-      registerTools(db, "get_minimal_context", {
-        changed_files: "single-string",
-        mode: "review",
-      })
-    ).toThrow("changed_files must be a non-empty array of strings");
+  it("changed_files が配列でない場合は isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: "single-string",
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("changed_files must be a non-empty array of strings");
   });
 
-  it("changed_files が空配列の場合はエラーをスロー", () => {
-    expect(() =>
-      registerTools(db, "get_minimal_context", {
-        changed_files: [],
-        mode: "review",
-      })
-    ).toThrow("changed_files must be a non-empty array of strings");
+  it("changed_files が空配列の場合は isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [],
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("changed_files must be a non-empty array of strings");
   });
 
-  it("mode が不正な値の場合はエラーをスロー", () => {
-    expect(() =>
-      registerTools(db, "get_minimal_context", {
-        changed_files: [IMPL_FILE],
-        mode: "invalid",
-      })
-    ).toThrow("mode must be one of");
+  it("mode が不正な値の場合は isError を返す", () => {
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE],
+      mode: "invalid",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("mode must be one of");
   });
 
-  it("プロジェクト外の絶対パスはエラーをスロー", () => {
+  it("プロジェクト外の絶対パスはエラーをスロー（resolveFilePath は throw のまま）", () => {
     expect(() =>
       registerTools(db, "get_minimal_context", {
         changed_files: ["/etc/passwd"],

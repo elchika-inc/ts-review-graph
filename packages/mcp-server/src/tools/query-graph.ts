@@ -1,6 +1,9 @@
 import type { Db } from "@ts-review-graph/core";
 import type { ToolResult } from "./types.js";
 
+const VALID_EDGE_KINDS = new Set(["IMPORTS_FROM", "TYPED_BY", "IMPLEMENTS", "EXTENDS", "HAS_TEST"]);
+const MAX_RESULTS = 200;
+
 export function queryGraph(
   db: Db,
   args: Record<string, unknown>
@@ -12,10 +15,21 @@ export function queryGraph(
       isError: true,
     };
   }
-  const edgeKind = typeof args["edge_kind"] === "string" ? args["edge_kind"] : undefined;
+
+  const rawEdgeKind = args["edge_kind"];
+  if (rawEdgeKind !== undefined && (typeof rawEdgeKind !== "string" || !VALID_EDGE_KINDS.has(rawEdgeKind))) {
+    return {
+      content: [{ type: "text", text: `edge_kind must be one of: ${[...VALID_EDGE_KINDS].join(", ")}` }],
+      isError: true,
+    };
+  }
+  const edgeKind = typeof rawEdgeKind === "string" ? rawEdgeKind : undefined;
+
   const direction: "forward" | "reverse" =
     args["direction"] === "reverse" ? "reverse" : "forward";
-  const depth = Math.min(Number(args["depth"] ?? 3), 10); // デフォルト3（implement モードの blast radius と同値）、上限10
+
+  const rawDepth = Number(args["depth"] ?? 3);
+  const depth = Math.min(Number.isFinite(rawDepth) ? rawDepth : 3, 10); // デフォルト3、上限10
 
   const kindClause = edgeKind ? "AND e.kind = @edgeKind" : "";
   const traverseJoin =
@@ -25,9 +39,10 @@ export function queryGraph(
   const selectNext =
     direction === "forward" ? "e.target_id" : "e.source_id";
 
+  // file でシード — from はファイルパス。id ではなく file でルックアップする
   const sql = `
     WITH RECURSIVE traverse(node_id, depth) AS (
-      SELECT id, 0 FROM nodes WHERE id = @from
+      SELECT id, 0 FROM nodes WHERE file = @from
       UNION
       SELECT ${selectNext}, t.depth + 1
       FROM traverse t
@@ -38,9 +53,9 @@ export function queryGraph(
     FROM traverse tr
     JOIN nodes n ON n.id = tr.node_id
     ORDER BY n.file
+    LIMIT ${MAX_RESULTS + 1}
   `;
 
-  // edgeKind がある場合とない場合でバインド変数を分ける
   const rows = edgeKind
     ? (db.prepare(sql).all({ from, depth, edgeKind }) as Array<{
         id: string;
@@ -55,7 +70,11 @@ export function queryGraph(
         kind: string;
       }>);
 
-  const lines = rows.map((r) => `${r.id}  [${r.kind}]  ${r.file}`);
+  const truncated = rows.length > MAX_RESULTS;
+  const display = truncated ? rows.slice(0, MAX_RESULTS) : rows;
+  const lines = display.map((r) => `${r.id}  [${r.kind}]  ${r.file}`);
+  if (truncated) lines.push(`... (truncated at ${MAX_RESULTS} results — narrow with edge_kind or reduce depth)`);
+
   return {
     content: [
       {

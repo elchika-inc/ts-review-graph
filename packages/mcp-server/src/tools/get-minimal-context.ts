@@ -6,16 +6,38 @@ import type { ToolResult } from "./types.js";
 const VALID_MODES = ["review", "implement", "debug"] as const;
 type Mode = typeof VALID_MODES[number];
 
-function validateArgs(args: Record<string, unknown>): { files: string[]; mode: Mode } {
+const MAX_CHANGED_FILES = 100;
+
+type ValidatedArgs = { files: string[]; mode: Mode };
+
+function validateArgs(args: Record<string, unknown>): ValidatedArgs | ToolResult {
   const files = args["changed_files"];
   if (!Array.isArray(files) || files.length === 0 || !files.every((f) => typeof f === "string")) {
-    throw new Error("changed_files must be a non-empty array of strings");
+    return {
+      content: [{ type: "text", text: "changed_files must be a non-empty array of strings" }],
+      isError: true,
+    };
   }
-  const mode = (args["mode"] ?? "review") as string;
-  if (!VALID_MODES.includes(mode as Mode)) {
-    throw new Error(`mode must be one of: ${VALID_MODES.join(", ")}`);
+  if (files.length > MAX_CHANGED_FILES) {
+    return {
+      content: [{ type: "text", text: `changed_files must have at most ${MAX_CHANGED_FILES} entries (got ${files.length})` }],
+      isError: true,
+    };
   }
-  return { files: files as string[], mode: mode as Mode };
+  const rawMode = args["mode"] ?? "review";
+  if (typeof rawMode !== "string") {
+    return {
+      content: [{ type: "text", text: `mode must be one of: ${VALID_MODES.join(", ")}` }],
+      isError: true,
+    };
+  }
+  if (!VALID_MODES.includes(rawMode as Mode)) {
+    return {
+      content: [{ type: "text", text: `mode must be one of: ${VALID_MODES.join(", ")}` }],
+      isError: true,
+    };
+  }
+  return { files: files as string[], mode: rawMode as Mode };
 }
 
 // 相対/絶対パスをプロジェクトルート基準の絶対パスに変換する
@@ -42,7 +64,10 @@ export function getMinimalContext(
   db: Db,
   args: Record<string, unknown>
 ): ToolResult {
-  const { files: rawFiles, mode } = validateArgs(args);
+  const validated = validateArgs(args);
+  if ("isError" in validated) return validated;
+
+  const { files: rawFiles, mode } = validated;
   const changedFiles = rawFiles.map(resolveFilePath);
   const maxDepth = DEPTH_FOR_MODE(mode);
 
@@ -72,14 +97,21 @@ export function getMinimalContext(
     ``,
   ];
 
+  // implement モードでは変更ファイル自身はリストから除外して表示
+  // shownCount はあくまで表示したファイル数（変更ファイル自身を除く）
   if (mode === "implement") {
-    lines.push(`── 影響を受けるファイル（REVERSE depth=${maxDepth}） ──`);
-    let reverseCount = 0;
+    const displayedReverse: string[] = [];
     for (const [file, reason] of reverseFiles) {
       if (changedFiles.includes(file)) continue;
-      lines.push(`  ${++reverseCount}. ${file}  [${reason}]`);
+      displayedReverse.push(`  ${displayedReverse.length + 1}. ${file}  [${reason}]`);
     }
-    if (reverseCount === 0) lines.push(`  (なし)`);
+
+    lines.push(`── 影響を受けるファイル（REVERSE depth=${maxDepth}） ──`);
+    if (displayedReverse.length === 0) {
+      lines.push(`  (なし)`);
+    } else {
+      lines.push(...displayedReverse);
+    }
 
     lines.push(``, `── 一緒に変えるべきファイル（FORWARD depth=1） ──`);
     if (forwardFiles.size === 0) {
@@ -90,19 +122,17 @@ export function getMinimalContext(
         lines.push(`  ${i++}. ${file}  [${reason}]`);
       }
     }
+
+    const shownCount = displayedReverse.length + forwardFiles.size;
+    lines.push(``, `SKIP: ${Math.max(0, totalFiles - shownCount)} other files — not in blast radius`);
   } else {
     lines.push(`READ THESE FILES ONLY (${reverseFiles.size} files, mode=${mode}, depth=${maxDepth}):`);
     let i = 1;
     for (const [file, reason] of reverseFiles) {
       lines.push(`  ${i++}. ${file}  [${reason}]`);
     }
+    lines.push(``, `SKIP: ${Math.max(0, totalFiles - reverseFiles.size)} other files — not in blast radius`);
   }
-
-  const shownCount = reverseFiles.size + forwardFiles.size;
-  lines.push(
-    ``,
-    `SKIP: ${Math.max(0, totalFiles - shownCount)} other files — not in blast radius`
-  );
 
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
