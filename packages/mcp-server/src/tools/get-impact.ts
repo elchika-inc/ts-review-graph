@@ -1,7 +1,6 @@
 import { computeBlastRadius, DEPTH_FOR_MODE } from "@ts-review-graph/core";
 import type { Db } from "@ts-review-graph/core";
-
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+import type { ToolResult } from "./types.js";
 
 const MAX_RESULTS = 200;
 

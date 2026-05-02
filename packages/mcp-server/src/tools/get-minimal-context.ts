@@ -1,8 +1,7 @@
 import { computeBlastRadius, computeForwardDeps, DEPTH_FOR_MODE } from "@ts-review-graph/core";
 import type { Db } from "@ts-review-graph/core";
 import path from "node:path";
-
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+import type { ToolResult } from "./types.js";
 
 const VALID_MODES = ["review", "implement", "debug"] as const;
 type Mode = typeof VALID_MODES[number];

@@ -47,10 +47,13 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
 
   const insertNode = db.prepare(INSERT_NODE);
   const insertEdge = db.prepare(INSERT_EDGE);
+  const deleteNodesByFile = db.prepare("DELETE FROM nodes WHERE file = ?");
+  const selectNodeExists = db.prepare("SELECT 1 FROM nodes WHERE id = ?");
+  const upsertHash = db.prepare(UPSERT_HASH);
 
   const run = db.transaction(() => {
     // 古いノードを削除（ON DELETE CASCADE がエッジも消す）
-    db.prepare("DELETE FROM nodes WHERE file = ?").run(filePath);
+    deleteNodesByFile.run(filePath);
 
     // ファイルノード
     const fileNodeId = `${filePath}::__file__`;
@@ -127,9 +130,7 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
       for (const candidate of candidates) {
         // 対象ノードが DB に存在すれば IMPORTS_FROM エッジを挿入
         const targetNodeId = `${candidate}::__file__`;
-        const exists = db
-          .prepare("SELECT 1 FROM nodes WHERE id = ?")
-          .get(targetNodeId);
+        const exists = selectNodeExists.get(targetNodeId);
         if (exists) {
           insertEdge.run({
             sourceId: fileNodeId,
@@ -142,7 +143,7 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
     }
 
     // ハッシュ UPSERT
-    db.prepare(UPSERT_HASH).run({
+    upsertHash.run({
       file: filePath,
       hash: newHash,
       updatedAt: Date.now(),

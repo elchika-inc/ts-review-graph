@@ -1,6 +1,5 @@
 import type { Db } from "@ts-review-graph/core";
-
-type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
+import type { ToolResult } from "./types.js";
 
 export function queryGraph(
   db: Db,
@@ -16,7 +15,7 @@ export function queryGraph(
   const edgeKind = typeof args["edge_kind"] === "string" ? args["edge_kind"] : undefined;
   const direction: "forward" | "reverse" =
     args["direction"] === "reverse" ? "reverse" : "forward";
-  const depth = Math.min(Number(args["depth"] ?? 1), 10); // 上限10
+  const depth = Math.min(Number(args["depth"] ?? 3), 10); // デフォルト3（implement モードの blast radius と同値）、上限10
 
   const kindClause = edgeKind ? "AND e.kind = @edgeKind" : "";
   const traverseJoin =
@@ -29,7 +28,7 @@ export function queryGraph(
   const sql = `
     WITH RECURSIVE traverse(node_id, depth) AS (
       SELECT id, 0 FROM nodes WHERE id = @from
-      UNION ALL
+      UNION
       SELECT ${selectNext}, t.depth + 1
       FROM traverse t
       JOIN edges e ON ${traverseJoin}

@@ -1,8 +1,7 @@
 import { openDb, buildFullGraph } from "@ts-review-graph/core";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
-
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+import type { ToolResult } from "./types.js";
 
 function loadTsconfigPaths(cwd: string, argTsconfigs?: string[]): string[] {
   // 1. Explicit arg(s)
@@ -51,6 +50,7 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
           text: `tsconfig.json が見つかりません: ${missing.join(", ")}`,
         },
       ],
+      isError: true,
     };
   }
   const db = openDb(dbPath);

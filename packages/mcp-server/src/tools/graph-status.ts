@@ -1,6 +1,5 @@
 import type { Db } from "@ts-review-graph/core";
-
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+import type { ToolResult } from "./types.js";
 
 export function graphStatus(db: Db | null): ToolResult {
   if (!db) {

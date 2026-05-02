@@ -1,12 +1,21 @@
 {
   "name": "ts-review-graph",
   "version": "0.2.0",
+  "description": "TypeScript dependency graph CLI — build, update and query your codebase graph",
   "type": "module",
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
+  "keywords": ["typescript", "dependency-graph", "cli", "code-review", "blast-radius"],
+  "author": "Naoto Nishikawa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elchika-inc/ts-review-graph"
+  },
+  "engines": { "node": ">=20" },
   "bin": {
     "ts-review-graph": "./dist/index.js"
   },
@@ -23,6 +32,7 @@
     "commander": "^12.0.0"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
   }

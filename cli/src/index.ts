@@ -92,7 +92,7 @@ program
     const mcpJsonPath = path.join(projectRoot, ".mcp.json");
     const serverEntry = {
       command: "npx",
-      args: ["ts-review-graph-mcp"],
+      args: ["-y", "@ts-review-graph/mcp-server"],
       env: { TS_REVIEW_GRAPH_DB: dbPath },
     };
     let mcpJson: Record<string, unknown> = {};

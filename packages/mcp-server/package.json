@@ -1,12 +1,21 @@
 {
   "name": "@ts-review-graph/mcp-server",
   "version": "0.2.0",
+  "description": "MCP server for TypeScript dependency graph analysis",
   "type": "module",
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
+  "keywords": ["typescript", "dependency-graph", "mcp", "code-review", "blast-radius"],
+  "author": "Naoto Nishikawa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elchika-inc/ts-review-graph"
+  },
+  "engines": { "node": ">=20" },
   "bin": {
     "ts-review-graph-mcp": "./dist/server.js"
   },
@@ -23,6 +32,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"
   }
