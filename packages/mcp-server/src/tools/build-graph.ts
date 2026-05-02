@@ -28,7 +28,14 @@ function loadTsconfigPaths(cwd: string, argTsconfigs?: string[]): string[] {
 }
 
 export function buildGraph(args: Record<string, unknown>): ToolResult {
-  const cwd = process.cwd();
+  // MCP サーバーは Claude Code から起動されるため process.cwd() がプロジェクトルートとは限らない。
+  // TS_REVIEW_GRAPH_DB が設定されている場合はそこからプロジェクトルートを逆算する。
+  const envDb = process.env["TS_REVIEW_GRAPH_DB"];
+  const dbPath = envDb ?? path.join(process.cwd(), ".ts-review-graph/graph.db");
+  const cwd = envDb
+    ? path.resolve(path.dirname(envDb), "..")
+    : process.cwd();
+
   // tsconfigs (array) takes priority over legacy tsconfig (single string)
   const rawTsconfigs = args["tsconfigs"] as string[] | undefined;
   const rawTsconfig = args["tsconfig"] as string | undefined;
@@ -46,10 +53,6 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
       ],
     };
   }
-
-  const dbPath =
-    process.env["TS_REVIEW_GRAPH_DB"] ??
-    path.join(cwd, ".ts-review-graph/graph.db");
   const db = openDb(dbPath);
 
   try {

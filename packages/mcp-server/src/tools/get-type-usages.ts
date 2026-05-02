@@ -1,12 +1,19 @@
 import type { Db } from "@ts-review-graph/core";
 
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export function getTypeUsages(
   db: Db,
   args: Record<string, unknown>
 ): ToolResult {
-  const typeName = args["type_name"] as string;
+  const typeName = args["type_name"];
+  if (typeof typeName !== "string" || typeName.trim() === "") {
+    return {
+      content: [{ type: "text", text: "type_name must be a non-empty string" }],
+      isError: true,
+    };
+  }
+
   const escaped = typeName.replace(/%/g, "\\%").replace(/_/g, "\\_");
   const rows = db
     .prepare(

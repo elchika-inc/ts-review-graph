@@ -137,7 +137,8 @@ export function registerTools(
   toolName: string,
   args: Record<string, unknown>
 ): ToolResult {
-  if (!db && toolName !== "build_graph") {
+  // graph_status と build_graph は db=null でも動作する
+  if (!db && toolName !== "build_graph" && toolName !== "graph_status") {
     return {
       content: [
         {
@@ -163,7 +164,7 @@ export function registerTools(
     case "build_graph":
       return buildGraph(args);
     case "graph_status":
-      return graphStatus(db!);
+      return graphStatus(db);
     default:
       return {
         content: [{ type: "text", text: `Unknown tool: ${toolName}` }],

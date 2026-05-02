@@ -9,6 +9,11 @@ export interface BlastNode {
 // 逆方向 BFS: 変更ファイルに依存しているファイルを探す
 // エッジ意味: source が target を依存している
 // → target を変更したとき source が影響を受ける → source を逆探索
+//
+// UNION (not UNION ALL): SQLite は完全な行タプル (node_id, depth, reason) で重複除去する。
+// 同一 node_id でも depth や reason が異なれば別行として扱われるため、UNION だけでは
+// サイクルグラフのノード再訪問を防げない。:max_depth が実質的なサイクル終端として機能する。
+// 最終出力の重複は JS レイヤーの seen.has(n.file) で排除する。
 const REVERSE_BFS_SQL = `
 WITH RECURSIVE blast(node_id, depth, reason) AS (
   SELECT id, 0, 'changed'

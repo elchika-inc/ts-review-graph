@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS file_hashes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id, kind);
-CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id, kind);
+-- source_id を含めてカバリングインデックス化 — REVERSE BFS の JOIN がテーブルルックアップなしで完結する
+CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id, kind, source_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_file   ON nodes(file);
 `;
 

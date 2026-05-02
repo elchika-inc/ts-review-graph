@@ -32,7 +32,7 @@ function writeConfig(projectRoot: string, config: TsReviewGraphConfig): void {
 }
 
 const program = new Command();
-program.name("ts-review-graph").version("0.1.0");
+program.name("ts-review-graph").version("0.2.0");
 
 // --- install ---
 program
@@ -205,9 +205,15 @@ program
       process.exit(1);
     }
 
+    const resolvedFile = path.resolve(file);
+    if (!existsSync(resolvedFile)) {
+      console.error(`ファイルが見つかりません: ${file}`);
+      process.exit(1);
+    }
+
     const db = openDb(dbPath);
     try {
-      const result = updateFile(db, path.resolve(file));
+      const result = updateFile(db, resolvedFile);
       if (result === "skipped") {
         console.log(`スキップ（変更なし）: ${file}`);
       } else {

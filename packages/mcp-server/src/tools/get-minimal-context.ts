@@ -19,15 +19,20 @@ function validateArgs(args: Record<string, unknown>): { files: string[]; mode: M
   return { files: files as string[], mode: mode as Mode };
 }
 
-// 相対パスをプロジェクトルート基準の絶対パスに変換する
-// DB_PATH = <root>/.ts-review-graph/graph.db なので親の親がルート
-// パストラバーサル（../../）を検出してプロジェクト外アクセスを防ぐ
+// 相対/絶対パスをプロジェクトルート基準の絶対パスに変換する
+// DB_PATH = <root>/.ts-review-graph/graph.db なので dirname の親がルート
+// パストラバーサル（../../）や絶対パス指定によるプロジェクト外アクセスを防ぐ
 function resolveFilePath(file: string): string {
-  if (path.isAbsolute(file)) return file;
   const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
-  if (!dbPath) return file;
-  const projectRoot = path.resolve(path.dirname(dbPath), "..");
-  const resolved = path.resolve(projectRoot, file);
+  // TS_REVIEW_GRAPH_DB 未設定時は process.cwd() をプロジェクトルートとして使用
+  const projectRoot = dbPath
+    ? path.resolve(path.dirname(dbPath), "..")
+    : process.cwd();
+
+  const resolved = path.isAbsolute(file)
+    ? path.normalize(file)
+    : path.resolve(projectRoot, file);
+
   if (!resolved.startsWith(projectRoot + path.sep) && resolved !== projectRoot) {
     throw new Error(`Path traversal detected: ${file}`);
   }

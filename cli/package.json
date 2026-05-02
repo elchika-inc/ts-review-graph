@@ -1,7 +1,12 @@
 {
   "name": "ts-review-graph",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "ts-review-graph": "./dist/index.js"
   },
@@ -9,6 +14,9 @@
     "build": "tsc",
     "test": "vitest run --passWithNoTests",
     "lint": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@ts-review-graph/core": "workspace:*",

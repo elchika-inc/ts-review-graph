@@ -1,12 +1,18 @@
 import type { Db } from "@ts-review-graph/core";
 
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export function getTestCoverage(
   db: Db,
   args: Record<string, unknown>
 ): ToolResult {
-  const file = args["file"] as string;
+  const file = args["file"];
+  if (typeof file !== "string" || file.trim() === "") {
+    return {
+      content: [{ type: "text", text: "file must be a non-empty string" }],
+      isError: true,
+    };
+  }
   const rows = db
     .prepare(
       `SELECT n.file

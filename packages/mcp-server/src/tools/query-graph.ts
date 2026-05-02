@@ -1,13 +1,19 @@
 import type { Db } from "@ts-review-graph/core";
 
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 export function queryGraph(
   db: Db,
   args: Record<string, unknown>
 ): ToolResult {
-  const from = args["from"] as string;
-  const edgeKind = args["edge_kind"] as string | undefined;
+  const from = args["from"];
+  if (typeof from !== "string" || from.trim() === "") {
+    return {
+      content: [{ type: "text", text: "from must be a non-empty string" }],
+      isError: true,
+    };
+  }
+  const edgeKind = typeof args["edge_kind"] === "string" ? args["edge_kind"] : undefined;
   const direction: "forward" | "reverse" =
     args["direction"] === "reverse" ? "reverse" : "forward";
   const depth = Math.min(Number(args["depth"] ?? 1), 10); // 上限10

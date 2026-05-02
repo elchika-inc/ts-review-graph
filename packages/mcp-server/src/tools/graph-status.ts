@@ -2,7 +2,18 @@ import type { Db } from "@ts-review-graph/core";
 
 type ToolResult = { content: Array<{ type: "text"; text: string }> };
 
-export function graphStatus(db: Db): ToolResult {
+export function graphStatus(db: Db | null): ToolResult {
+  if (!db) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: "ts-review-graph status:\n  グラフ未構築 — build_graph ツールを呼び出してください",
+        },
+      ],
+    };
+  }
+
   const { nodeCount } = db
     .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
     .get() as { nodeCount: number };
