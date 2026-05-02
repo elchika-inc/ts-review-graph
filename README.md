@@ -2,6 +2,8 @@
 
 TypeScript プロジェクトの依存グラフを SQLite に構築し、コードレビュー・実装・デバッグ前に **「読むべき最小ファイルセット」** を Claude Code (MCP) に伝えるツール。
 
+> **English summary**: ts-review-graph builds a TypeScript dependency graph in SQLite and exposes it via MCP to Claude Code. Before reading any source files, Claude calls `get_minimal_context` to get the **minimal blast-radius file set** — typically reducing token consumption by 50–79% compared to unguided exploration. See [BENCHMARK.md](./BENCHMARK.md) for benchmarks.
+
 ## なぜ使うのか
 
 Claude Code はコードを読みすぎる。大きなファイルを次々と読んで、関係ないコードまでコンテキストに詰め込む。
@@ -162,9 +164,9 @@ MIT
 
 | パッケージ | 説明 | Version |
 |---|---|---|
-| `ts-review-graph` | CLI ツール | 0.1.0 |
-| `@ts-review-graph/mcp-server` | MCP サーバー | 0.1.0 |
-| `@ts-review-graph/core` | グラフ構築・クエリエンジン | — |
+| `ts-review-graph` | CLI ツール | 0.2.0 |
+| `@ts-review-graph/mcp-server` | MCP サーバー | 0.2.0 |
+| `@ts-review-graph/core` | グラフ構築・クエリエンジン | 0.2.0 |
 
 ## 関連リンク
 
