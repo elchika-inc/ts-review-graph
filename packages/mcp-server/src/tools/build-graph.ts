@@ -12,13 +12,25 @@ function loadTsconfigPaths(cwd: string, argTsconfigs?: string[]): string[] {
   // 2. config.json in .ts-review-graph/
   const configFile = path.join(cwd, ".ts-review-graph/config.json");
   if (existsSync(configFile)) {
-    const cfg = JSON.parse(readFileSync(configFile, "utf-8")) as {
-      tsconfigs?: string[];
-    };
-    if (cfg.tsconfigs && cfg.tsconfigs.length > 0) {
-      return cfg.tsconfigs.map((p) =>
-        path.isAbsolute(p) ? p : path.join(cwd, p)
-      );
+    let cfg: unknown;
+    try {
+      cfg = JSON.parse(readFileSync(configFile, "utf-8"));
+    } catch {
+      return [path.join(cwd, "tsconfig.json")];
+    }
+    if (
+      cfg !== null &&
+      typeof cfg === "object" &&
+      "tsconfigs" in cfg &&
+      Array.isArray((cfg as { tsconfigs: unknown }).tsconfigs) &&
+      ((cfg as { tsconfigs: unknown[] }).tsconfigs).every((x) => typeof x === "string")
+    ) {
+      const tsconfigs = (cfg as { tsconfigs: string[] }).tsconfigs;
+      if (tsconfigs.length > 0) {
+        return tsconfigs.map((p) =>
+          path.isAbsolute(p) ? p : path.join(cwd, p)
+        );
+      }
     }
   }
 
@@ -58,7 +70,21 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
       isError: true,
     };
   }
-  const db = openDb(dbPath);
+
+  let db: ReturnType<typeof openDb>;
+  try {
+    db = openDb(dbPath);
+  } catch (err) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `データベースを開けませんでした: ${dbPath} — ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ],
+      isError: true,
+    };
+  }
 
   try {
     const startMs = Date.now();

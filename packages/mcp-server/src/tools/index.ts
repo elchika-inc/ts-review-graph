@@ -25,11 +25,14 @@ export const TOOL_DEFINITIONS = [
           type: "array",
           items: { type: "string", description: "File path relative to project root or absolute path" },
           description: "List of files you plan to change (max 100)",
+          minItems: 1,
+          maxItems: 100,
         },
         mode: {
           type: "string",
           enum: ["review", "implement", "debug"],
-          description: "review=check impact, implement=plan changes across layers, debug=deep trace",
+          default: "review",
+          description: "review=check impact (default), implement=plan changes across layers, debug=deep trace",
         },
       },
       required: ["changed_files"],
@@ -38,9 +41,10 @@ export const TOOL_DEFINITIONS = [
   {
     name: "get_impact",
     description:
-      "Return all files that depend on the given file, with the dependency reason (IMPORTS_FROM, TYPED_BY, etc.). " +
-      "Traverses up to depth 5. Use get_minimal_context for mode-aware blast radius with fewer results. " +
-      "変更ファイルに依存するファイル一覧と依存理由を返す（最大depth=5）。",
+      "Return all files that depend on the given file, with the dependency reason (IMPORTS_FROM, TYPED_BY, etc.) and depth. " +
+      "Traverses up to depth 5. For a single file, prefer get_minimal_context with mode='review' for mode-aware filtering. " +
+      "Use get_impact only when you need the raw full list with per-file depth labels. " +
+      "変更ファイルに依存するファイル一覧と依存理由・深さを返す（最大depth=5）。",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -95,7 +99,7 @@ export const TOOL_DEFINITIONS = [
           enum: ["forward", "reverse"],
           description: "forward=who this file depends on, reverse=who depends on this file",
         },
-        depth: { type: "number", description: "Traversal depth limit (default: 3, max: 10)" },
+        depth: { type: "number", description: "Traversal depth limit", default: 3, minimum: 1, maximum: 10 },
       },
       required: ["from"],
     },
@@ -115,10 +119,6 @@ export const TOOL_DEFINITIONS = [
           items: { type: "string" },
           description: "Optional: list of tsconfig.json paths to build from (overrides config.json)",
         },
-        tsconfig: {
-          type: "string",
-          description: "Optional: single tsconfig.json path (deprecated — use tsconfigs for multi-tsconfig projects)",
-        },
       },
       required: [],
     },
@@ -126,7 +126,8 @@ export const TOOL_DEFINITIONS = [
   {
     name: "graph_status",
     description:
-      "Return graph statistics: node count, edge count, and last build time. " +
+      "Return graph statistics: node count, edge count, file count, and last build time. " +
+      "Output format: plain text with fields nodes, edges, files, updated_at (ISO 8601). " +
       "Use to verify the graph is built before calling other tools. " +
       "グラフの統計情報（ノード数・エッジ数・最終更新）を返す。",
     inputSchema: { type: "object" as const, properties: {}, required: [] },

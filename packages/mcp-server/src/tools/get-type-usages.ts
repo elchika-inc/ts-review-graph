@@ -1,6 +1,22 @@
 import type { Db } from "@ts-review-graph/core";
 import type { ToolResult } from "./types.js";
 
+// LIKE クエリのステートメントを Db インスタンスごとにキャッシュ
+const typeUsagesStmtCache = new WeakMap<Db, ReturnType<Db["prepare"]>>();
+function getTypeUsagesStmt(db: Db) {
+  let stmt = typeUsagesStmtCache.get(db);
+  if (!stmt) {
+    stmt = db.prepare(
+      `SELECT DISTINCT n.file, n.name, n.kind
+       FROM nodes n
+       WHERE n.type_refs LIKE ? ESCAPE '\\'
+       ORDER BY n.file`
+    );
+    typeUsagesStmtCache.set(db, stmt);
+  }
+  return stmt;
+}
+
 export function getTypeUsages(
   db: Db,
   args: Record<string, unknown>
@@ -14,13 +30,7 @@ export function getTypeUsages(
   }
 
   const escaped = typeName.replace(/%/g, "\\%").replace(/_/g, "\\_");
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT n.file, n.name, n.kind
-       FROM nodes n
-       WHERE n.type_refs LIKE ? ESCAPE '\\'
-       ORDER BY n.file`
-    )
+  const rows = getTypeUsagesStmt(db)
     .all(`%${escaped}%`) as Array<{
     file: string;
     name: string;

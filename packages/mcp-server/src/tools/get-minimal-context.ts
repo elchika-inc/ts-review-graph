@@ -5,6 +5,19 @@ import { realpathSync } from "node:fs";
 import type { ToolResult } from "./types.js";
 
 const VALID_MODES = ["review", "implement", "debug"] as const;
+
+// COUNT クエリのステートメントを Db インスタンスごとにキャッシュ — ホットパスで prepare を繰り返さない
+// better-sqlite3 の型定義では get() の引数制約が曖昧なため、明示的に { get(): unknown } インタフェースを使用
+interface NoParamStmt { get(): unknown }
+const countStmtCache = new WeakMap<Db, NoParamStmt>();
+function getCountStmt(db: Db): NoParamStmt {
+  let stmt = countStmtCache.get(db);
+  if (!stmt) {
+    stmt = db.prepare("SELECT COUNT(DISTINCT file) as c FROM nodes") as unknown as NoParamStmt;
+    countStmtCache.set(db, stmt);
+  }
+  return stmt;
+}
 type Mode = typeof VALID_MODES[number];
 
 const MAX_CHANGED_FILES = 100;
@@ -82,7 +95,7 @@ export function getMinimalContext(
   args: Record<string, unknown>
 ): ToolResult {
   const validated = validateArgs(args);
-  if (!("files" in validated)) return validated;
+  if ("content" in validated) return validated;
 
   const { files: rawFiles, mode } = validated;
   const changedFiles = rawFiles.map(resolveFilePath);
@@ -105,9 +118,7 @@ export function getMinimalContext(
     }
   }
 
-  const totalFiles = (
-    db.prepare("SELECT COUNT(DISTINCT file) as c FROM nodes").get() as { c: number }
-  ).c;
+  const totalFiles = (getCountStmt(db).get() as { c: number }).c;
 
   const lines: string[] = [
     `Changed: ${rawFiles.join(", ")}`,

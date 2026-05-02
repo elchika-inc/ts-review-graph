@@ -267,7 +267,7 @@ describe("query_graph", () => {
 });
 
 describe("build_graph", () => {
-  it("build_graph: 実際の tsconfig からグラフを構築する", () => {
+  it("build_graph: 実際の tsconfig からグラフを構築し、ノードを含む DB を返す", () => {
     const buildDbPath = `/tmp/ts-rg-mcp-build-test-${Date.now()}.db`;
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
@@ -279,6 +279,45 @@ describe("build_graph", () => {
       expect(result.isError).toBeFalsy();
       expect(result.content[0].text).toContain("nodes");
       expect(result.content[0].text).toContain("edges");
+
+      // DB にノードが実際に書き込まれていることを確認
+      const verifyDb = openDb(buildDbPath);
+      try {
+        const { c } = verifyDb.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number };
+        expect(c).toBeGreaterThan(0);
+      } finally {
+        verifyDb.close();
+      }
+    } finally {
+      if (prevDb !== undefined) {
+        process.env["TS_REVIEW_GRAPH_DB"] = prevDb;
+      } else {
+        delete process.env["TS_REVIEW_GRAPH_DB"];
+      }
+      for (const ext of ["", "-wal", "-shm"]) {
+        const p = buildDbPath + ext;
+        if (existsSync(p)) rmSync(p);
+      }
+    }
+  });
+
+  it("build_graph: 同じ tsconfig で2回実行しても冪等（ノード数が増加しない）", () => {
+    const buildDbPath = `/tmp/ts-rg-mcp-build-idempotent-${Date.now()}.db`;
+    const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
+    process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
+
+    try {
+      registerTools(null, "build_graph", { tsconfigs: [FIXTURE_TSCONFIG] });
+      const db1 = openDb(buildDbPath);
+      const count1 = (db1.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number }).c;
+      db1.close();
+
+      registerTools(null, "build_graph", { tsconfigs: [FIXTURE_TSCONFIG] });
+      const db2 = openDb(buildDbPath);
+      const count2 = (db2.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number }).c;
+      db2.close();
+
+      expect(count2).toBe(count1);
     } finally {
       if (prevDb !== undefined) {
         process.env["TS_REVIEW_GRAPH_DB"] = prevDb;

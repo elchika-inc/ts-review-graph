@@ -130,7 +130,9 @@ program
         db.close();
       }
     } else {
-      console.warn(`⚠ tsconfig.json が見つかりません: ${tsconfigPaths.join(", ")}`);
+      console.error(`⚠ tsconfig.json が見つかりません: ${tsconfigPaths.join(", ")}`);
+      console.error("インストールが不完全です。有効な --tsconfig パスを指定して再実行してください。");
+      process.exit(1);
     }
 
     console.log("\nts-review-graph インストール完了！");
@@ -230,6 +232,9 @@ program
       } else {
         console.log(`更新完了: ${file}`);
       }
+    } catch (err) {
+      console.error("更新に失敗しました:", err instanceof Error ? err.message : err);
+      process.exit(1);
     } finally {
       db.close();
     }
@@ -249,7 +254,7 @@ program
       console.log(
         "グラフが未構築です。ts-review-graph install を実行してください。"
       );
-      return;
+      process.exit(1);
     }
 
     const db = openDb(dbPath);
@@ -303,6 +308,7 @@ program
 
     console.log("グラフデータ (.ts-review-graph/) は手動で削除してください");
     console.log("  rm -rf .ts-review-graph/");
+    console.log(".gitignore の .ts-review-graph/graph.db 行も手動で削除してください");
   });
 
 program.parse(process.argv);

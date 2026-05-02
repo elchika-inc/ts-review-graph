@@ -19,6 +19,10 @@ ts-review-graph はプロジェクトの依存グラフを事前に構築し、*
 
 606 ノード / 752 エッジの依存グラフから、変更 3 ファイルの blast radius のみ抽出。
 
+## 前提条件
+
+- **Node.js 20 以上**
+
 ## インストール
 
 ### クイックスタート（単一 tsconfig）
@@ -81,12 +85,12 @@ SKIP: 1170 other files — not in blast radius
 
 | ツール | 主な引数 | 内容 |
 |---|---|---|
-| `get_minimal_context` | `changed_files[]`, `mode` | 読むべき最小ファイルセット（REVERSE/FORWARD BFS） |
+| `get_minimal_context` | `changed_files[]`, `mode`（省略時: `"review"`） | 読むべき最小ファイルセット（REVERSE/FORWARD BFS） |
 | `get_impact` | `changed_file` | 影響を受けるファイルと深さ |
 | `get_type_usages` | `type_name` | 型を参照するノード一覧 |
 | `get_test_coverage` | `file` | 対応するテストファイル一覧 |
 | `query_graph` | `from`, `edge_kind`, `direction`, `depth` | 汎用グラフ探索 |
-| `build_graph` | `tsconfigs` | グラフを再構築 |
+| `build_graph` | `tsconfigs` | グラフを再構築（`tsconfig` 単一形式は非推奨） |
 | `graph_status` | — | グラフ統計を表示 |
 
 ### モード別 BFS 深さ
@@ -94,7 +98,7 @@ SKIP: 1170 other files — not in blast radius
 | mode | REVERSE | FORWARD | 用途 |
 |---|---|---|---|
 | `review` | depth=2 | なし | コードレビュー前の影響調査（downstream） |
-| `implement` | depth=3 | depth=1（直接 import のみ） | 実装タスク前の変更候補特定（両方向） |
+| `implement` | depth=3 | 直接 import のみ（固定 depth=1） | 実装タスク前の変更候補特定（両方向） |
 | `debug` | depth=5 | なし | バグ調査の広範な探索（upstream） |
 
 ## 設定ファイル
