@@ -34,7 +34,7 @@ Graph size: 1,191 nodes / 1,400+ edges (Cloudflare Workers monorepo)
 npx @elchika-inc/ts-review-graph@latest install --tsconfig tsconfig.json
 ```
 
-Config is saved to `.ts-review-graph/config.json`. Restart Claude Code and the MCP server connects automatically.
+Config is saved to `.ts-review-graph/config.json`, MCP server is registered in `.mcp.json`, and usage instructions are appended to `CLAUDE.md`. Restart Claude Code and the MCP server connects automatically.
 
 ### Monorepo (multiple tsconfigs)
 
@@ -78,7 +78,7 @@ SKIP: 1170 other files — not in blast radius
 
 | Command | Description |
 |---|---|
-| `npx @elchika-inc/ts-review-graph@latest install --tsconfig <path>` | Setup + initial build |
+| `npx @elchika-inc/ts-review-graph@latest install --tsconfig <path>` | Setup + initial build + register MCP + append `CLAUDE.md` |
 | `npx @elchika-inc/ts-review-graph build [--tsconfig <path>]... [--db <path>]` | Rebuild the graph |
 | `npx @elchika-inc/ts-review-graph update <file> [--db <path>]` | Incremental update for a single file |
 | `npx @elchika-inc/ts-review-graph status [--db <path>]` | Show graph statistics |
