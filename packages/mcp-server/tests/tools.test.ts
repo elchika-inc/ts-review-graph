@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { openDb } from "@ts-review-graph/core";
+import { openDb } from "@elchika-inc/ts-review-graph-core";
 import { registerTools } from "../src/tools/index.js";
 import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";

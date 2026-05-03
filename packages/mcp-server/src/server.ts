@@ -5,7 +5,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { openDb } from "@ts-review-graph/core";
+import { openDb } from "@elchika-inc/ts-review-graph-core";
 import { registerTools, TOOL_DEFINITIONS } from "./tools/index.js";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";

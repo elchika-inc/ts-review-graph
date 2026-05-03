@@ -1,4 +1,4 @@
-import type { Db } from "@ts-review-graph/core";
+import type { Db } from "@elchika-inc/ts-review-graph-core";
 import type { ToolResult } from "./types.js";
 
 const MAX_TYPE_RESULTS = 500;

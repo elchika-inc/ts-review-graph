@@ -1,5 +1,5 @@
-import { computeBlastRadius, computeForwardDeps, DEPTH_FOR_MODE } from "@ts-review-graph/core";
-import type { Db } from "@ts-review-graph/core";
+import { computeBlastRadius, computeForwardDeps, DEPTH_FOR_MODE } from "@elchika-inc/ts-review-graph-core";
+import type { Db } from "@elchika-inc/ts-review-graph-core";
 import path from "node:path";
 import { realpathSync } from "node:fs";
 import type { ToolResult } from "./types.js";

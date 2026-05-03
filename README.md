@@ -31,7 +31,7 @@ Graph size: 1,191 nodes / 1,400+ edges (Cloudflare Workers monorepo)
 ### Single tsconfig
 
 ```bash
-npx ts-review-graph@latest install --tsconfig tsconfig.json
+npx @elchika-inc/ts-review-graph@latest install --tsconfig tsconfig.json
 ```
 
 Config is saved to `.ts-review-graph/config.json`. Restart Claude Code and the MCP server connects automatically.
@@ -39,7 +39,7 @@ Config is saved to `.ts-review-graph/config.json`. Restart Claude Code and the M
 ### Monorepo (multiple tsconfigs)
 
 ```bash
-npx ts-review-graph@latest install \
+npx @elchika-inc/ts-review-graph@latest install \
   --tsconfig apps/api/tsconfig.json \
   --tsconfig apps/web/tsconfig.app.json \
   --tsconfig apps/worker/tsconfig.json
@@ -78,11 +78,11 @@ SKIP: 1170 other files — not in blast radius
 
 | Command | Description |
 |---|---|
-| `npx ts-review-graph@latest install --tsconfig <path>` | Setup + initial build |
-| `npx ts-review-graph build [--tsconfig <path>]... [--db <path>]` | Rebuild the graph |
-| `npx ts-review-graph update <file> [--db <path>]` | Incremental update for a single file |
-| `npx ts-review-graph status [--db <path>]` | Show graph statistics |
-| `npx ts-review-graph uninstall` | Remove MCP registration |
+| `npx @elchika-inc/ts-review-graph@latest install --tsconfig <path>` | Setup + initial build |
+| `npx @elchika-inc/ts-review-graph build [--tsconfig <path>]... [--db <path>]` | Rebuild the graph |
+| `npx @elchika-inc/ts-review-graph update <file> [--db <path>]` | Incremental update for a single file |
+| `npx @elchika-inc/ts-review-graph status [--db <path>]` | Show graph statistics |
+| `npx @elchika-inc/ts-review-graph uninstall` | Remove MCP registration |
 
 ### MCP tools
 
@@ -155,9 +155,9 @@ MIT
 
 | Package | Description | Version |
 |---|---|---|
-| `ts-review-graph` | CLI tool | 0.3.0 |
-| `@ts-review-graph/mcp-server` | MCP server | 0.3.0 |
-| `@ts-review-graph/core` | Graph build & query engine | 0.3.0 |
+| `@elchika-inc/ts-review-graph` | CLI tool | 0.3.0 |
+| `@elchika-inc/ts-review-graph-mcp-server` | MCP server | 0.3.0 |
+| `@elchika-inc/ts-review-graph-core` | Graph build & query engine | 0.3.0 |
 
 ## Links
 

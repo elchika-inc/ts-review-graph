@@ -1,4 +1,4 @@
-import type { Db } from "@ts-review-graph/core";
+import type { Db } from "@elchika-inc/ts-review-graph-core";
 import { getMinimalContext } from "./get-minimal-context.js";
 import { getImpact } from "./get-impact.js";
 import { getTypeUsages } from "./get-type-usages.js";

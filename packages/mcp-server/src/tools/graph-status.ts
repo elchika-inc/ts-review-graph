@@ -1,4 +1,4 @@
-import type { Db } from "@ts-review-graph/core";
+import type { Db } from "@elchika-inc/ts-review-graph-core";
 import type { ToolResult } from "./types.js";
 
 export function graphStatus(db: Db | null): ToolResult {

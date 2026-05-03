@@ -1,5 +1,5 @@
-import { computeBlastRadius, DEPTH_FOR_MODE } from "@ts-review-graph/core";
-import type { Db } from "@ts-review-graph/core";
+import { computeBlastRadius, DEPTH_FOR_MODE } from "@elchika-inc/ts-review-graph-core";
+import type { Db } from "@elchika-inc/ts-review-graph-core";
 import type { ToolResult } from "./types.js";
 
 const MAX_RESULTS = 200;

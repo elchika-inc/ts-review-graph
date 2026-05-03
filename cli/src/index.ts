@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { openDb, buildFullGraph, updateFile } from "@ts-review-graph/core";
+import { openDb, buildFullGraph, updateFile } from "@elchika-inc/ts-review-graph-core";
 import {
   mkdirSync,
   existsSync,
@@ -157,7 +157,7 @@ program
     // 7. MCP サーバーを .mcp.json に登録 — グラフ構築成功後のみ実行
     const serverEntry = {
       command: "npx",
-      args: ["-y", "@ts-review-graph/mcp-server"],
+      args: ["-y", "@elchika-inc/ts-review-graph-mcp-server"],
       env: { TS_REVIEW_GRAPH_DB: dbPath },
     };
     const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;

@@ -1,4 +1,4 @@
-import { openDb, buildFullGraph } from "@ts-review-graph/core";
+import { openDb, buildFullGraph } from "@elchika-inc/ts-review-graph-core";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import type { ToolResult } from "./types.js";

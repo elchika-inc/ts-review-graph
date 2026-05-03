@@ -1,5 +1,5 @@
 {
-  "name": "ts-review-graph",
+  "name": "@elchika-inc/ts-review-graph",
   "version": "0.3.0",
   "description": "TypeScript dependency graph CLI — build, update and query your codebase graph",
   "type": "module",
@@ -31,7 +31,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@ts-review-graph/core": "workspace:*",
+    "@elchika-inc/ts-review-graph-core": "workspace:*",
     "commander": "^12.0.0"
   },
   "devDependencies": {

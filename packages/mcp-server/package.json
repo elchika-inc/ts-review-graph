@@ -1,5 +1,5 @@
 {
-  "name": "@ts-review-graph/mcp-server",
+  "name": "@elchika-inc/ts-review-graph-mcp-server",
   "version": "0.3.0",
   "description": "MCP server for TypeScript dependency graph analysis",
   "type": "module",
@@ -32,7 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@ts-review-graph/core": "workspace:*",
+    "@elchika-inc/ts-review-graph-core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {
