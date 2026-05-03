@@ -1,6 +1,6 @@
 {
   "name": "@elchika-inc/ts-review-graph-mcp-server",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "MCP server for TypeScript dependency graph analysis",
   "type": "module",
   "files": [

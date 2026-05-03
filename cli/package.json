@@ -1,6 +1,6 @@
 {
   "name": "@elchika-inc/ts-review-graph",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "TypeScript dependency graph CLI — build, update and query your codebase graph",
   "type": "module",
   "files": [

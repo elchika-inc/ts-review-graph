@@ -172,8 +172,50 @@ program
     }
     console.log("✓ MCP サーバーを .mcp.json に登録しました");
 
+    // 8. CLAUDE.md に使用方法セクションを追記（べき等）
+    const claudeMdPath = path.join(projectRoot, "CLAUDE.md");
+    const claudeMdSection = `
+## TypeScript Dependency Graph (ts-review-graph MCP)
+
+### 必須: ソースコード参照前にコンテキスト取得
+
+コードレビュー・実装・デバッグで**ソースファイルを Read する前に**、必ず \`get_minimal_context\` を呼び出すこと。
+
+\`\`\`
+mcp__ts-review-graph__get_minimal_context({
+  changed_files: ["src/foo.ts"],
+  mode: "review"   // review | implement | debug
+})
+\`\`\`
+
+| mode | 使う場面 |
+|------|---------|
+| \`review\` | PR レビュー、コード調査 — REVERSE BFS (影響範囲) を返す |
+| \`implement\` | 新機能実装 — REVERSE + 深さ1 FORWARD (依存先) を返す |
+| \`debug\` | バグ調査 — REVERSE BFS (影響範囲) を返す |
+
+グラフが古い場合は \`mcp__ts-review-graph__build_graph\` で再構築する。
+`;
+    const CLAUDE_MD_MARKER = "ts-review-graph MCP";
+    try {
+      if (existsSync(claudeMdPath)) {
+        const existing = readFileSync(claudeMdPath, "utf-8");
+        if (!existing.includes(CLAUDE_MD_MARKER)) {
+          appendFileSync(claudeMdPath, claudeMdSection);
+          console.log("✓ CLAUDE.md に ts-review-graph セクションを追記しました");
+        } else {
+          console.log("✓ CLAUDE.md の ts-review-graph セクションは既に存在します（スキップ）");
+        }
+      } else {
+        writeFileSync(claudeMdPath, claudeMdSection.trimStart());
+        console.log("✓ CLAUDE.md を作成し ts-review-graph セクションを追記しました");
+      }
+    } catch (err) {
+      console.warn(`⚠ CLAUDE.md の更新に失敗しました: ${err instanceof Error ? err.message : err}`);
+    }
+
     console.log("\nts-review-graph インストール完了！");
-    console.log("Claude Code を再起動して MCP サーバーを有効化してください。");
+    console.log("Claude Code を再起動して MCP サーバーを有効化してください.");
   });
 
 // --- build ---
