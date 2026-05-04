@@ -205,7 +205,7 @@ export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
     deleteAllNodes.run();
     deleteAllHashes.run();
 
-    for (const { nodes, edges, fileHashes } of allResults) {
+    for (const { nodes } of allResults) {
       for (const n of nodes) {
         insertNode.run({
           id: n.id,
@@ -217,6 +217,8 @@ export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
           typeRefs: JSON.stringify(n.typeRefs),
         });
       }
+    }
+    for (const { edges } of allResults) {
       for (const e of edges) {
         insertEdge.run({
           sourceId: e.sourceId,
@@ -224,6 +226,8 @@ export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
           kind: e.kind,
         });
       }
+    }
+    for (const { fileHashes } of allResults) {
       for (const [file, hash] of fileHashes) {
         upsertHash.run({ file, hash, updatedAt: now });
       }

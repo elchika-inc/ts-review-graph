@@ -8,6 +8,11 @@ const FIXTURE = path.join(
   "fixtures/simple/tsconfig.json"
 );
 
+const FIXTURE_WITH_TEST = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "fixtures/with-test/tsconfig.json"
+);
+
 describe("analyzeProject", () => {
   it("ファイルノードを抽出する", () => {
     const { nodes } = analyzeProject(FIXTURE);
@@ -32,5 +37,19 @@ describe("analyzeProject", () => {
     const { edges } = analyzeProject(FIXTURE);
     const typedByEdges = edges.filter((e) => e.kind === "TYPED_BY");
     expect(typedByEdges.length).toBeGreaterThan(0);
+  });
+
+  it("HAS_TEST エッジを生成する", () => {
+    const { edges } = analyzeProject(FIXTURE_WITH_TEST);
+    const hasTestEdges = edges.filter((e) => e.kind === "HAS_TEST");
+    expect(hasTestEdges.length).toBeGreaterThan(0);
+  });
+
+  it("HAS_TEST エッジの sourceId に node_modules パスが含まれない", () => {
+    const { edges } = analyzeProject(FIXTURE_WITH_TEST);
+    const hasTestEdges = edges.filter((e) => e.kind === "HAS_TEST");
+    for (const edge of hasTestEdges) {
+      expect(edge.sourceId).not.toContain("node_modules");
+    }
   });
 });

@@ -152,4 +152,46 @@ describe("buildFullGraph", () => {
     ).c;
     expect(count).toBe(0);
   });
+
+  it("tsconfig 間クロス参照がある場合も FK 制約違反が起きない", () => {
+    // dir1: lib.ts (tsconfig1)
+    // dir2: app.ts と app.test.ts (tsconfig2) — app.test.ts が ../dir1/lib.ts を import
+    const dir1 = path.join(os.tmpdir(), `ts-rg-cross-lib-${randomUUID()}`);
+    const dir2 = path.join(os.tmpdir(), `ts-rg-cross-app-${randomUUID()}`);
+    try {
+      mkdirSync(dir1, { recursive: true });
+      writeFileSync(path.join(dir1, "lib.ts"), "export function libFn() { return 1; }");
+      writeFileSync(
+        path.join(dir1, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { target: "ES2022", module: "ES2022" }, include: ["lib.ts"] })
+      );
+
+      mkdirSync(dir2, { recursive: true });
+      writeFileSync(path.join(dir2, "app.ts"), "export function appFn() { return 2; }");
+      writeFileSync(
+        path.join(dir2, "app.test.ts"),
+        `import { appFn } from "./app.js";\nimport { libFn } from "${dir1}/lib.js";\nexport {};`
+      );
+      writeFileSync(
+        path.join(dir2, "tsconfig.json"),
+        JSON.stringify({ compilerOptions: { target: "ES2022", module: "ES2022" }, include: ["app.ts", "app.test.ts"] })
+      );
+
+      // FK 制約違反が起きなければ成功
+      expect(() =>
+        buildFullGraph(db, [
+          path.join(dir1, "tsconfig.json"),
+          path.join(dir2, "tsconfig.json"),
+        ])
+      ).not.toThrow();
+
+      const appNode = db.prepare("SELECT * FROM nodes WHERE name = 'appFn'").get();
+      expect(appNode).toBeTruthy();
+      const libNode = db.prepare("SELECT * FROM nodes WHERE name = 'libFn'").get();
+      expect(libNode).toBeTruthy();
+    } finally {
+      rmSync(dir1, { recursive: true, force: true });
+      rmSync(dir2, { recursive: true, force: true });
+    }
+  });
 });
