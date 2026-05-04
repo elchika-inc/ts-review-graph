@@ -1,5 +1,10 @@
 # ts-review-graph
 
+[![CI](https://github.com/elchika-inc/ts-review-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/elchika-inc/ts-review-graph/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@elchika-inc/ts-review-graph)](https://www.npmjs.com/package/@elchika-inc/ts-review-graph)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
+
 Build a TypeScript dependency graph in SQLite and tell Claude Code (via MCP) the **minimal file set to read** before any code review, implementation, or debugging session.
 
 > **日本語**: TypeScript プロジェクトの依存グラフを SQLite に構築し、コードレビュー・実装・デバッグ前に「読むべき最小ファイルセット」を Claude Code (MCP) に伝えるツール。
