@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-05-06
+
+### Fixed
+- **`updateFile` return value on deletion** — when the target file no longer exists, `updateFile` now returns `"deleted"` instead of `"skipped"`, distinguishing "no hash change" from "node cleanup on removal"
+- **`HAS_TEST` loop `node_modules` filter** — the source test file is now also checked against `node_modules` (previously only the resolved implementation file was checked), making the filter symmetric with the main analysis loop
+- **`get_minimal_context` review/debug mode** — the changed file itself is now excluded from the "READ THESE FILES ONLY" list (consistent with `implement` mode behaviour); SKIP count continues to use `reverseFiles.size` which includes the changed file
+- **`build` command DB connection leak** — statistics queries are now inside the `buildFullGraph` try block so `finally { db?.close() }` runs even when the build fails
+- **`update` CLI output** — adds a `"deleted"` message branch and notes that `TYPED_BY`/`IMPLEMENTS`/`EXTENDS`/`HAS_TEST` edges are restored on the next `build`
+- **`db.test.ts` test isolation** — `Date.now()` replaced with `randomUUID()` in `beforeEach`; each test now wraps DB operations in `try/finally` to guarantee `db.close()` on assertion failure
+
 ## [0.3.4] - 2026-05-06
 
 ### Fixed
