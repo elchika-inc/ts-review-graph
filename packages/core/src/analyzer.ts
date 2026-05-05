@@ -105,7 +105,7 @@ export function analyzeProject(tsconfigPath: string): AnalysisResult {
     if (!isTestFile(filePath)) continue;
     for (const decl of sf.getImportDeclarations()) {
       const resolved = decl.getModuleSpecifierSourceFile();
-      if (resolved && !isTestFile(resolved.getFilePath())) {
+      if (resolved && !isTestFile(resolved.getFilePath()) && !resolved.getFilePath().includes("node_modules")) {
         addEdge({
           sourceId: fileId(resolved.getFilePath()),
           targetId: fileId(filePath),
