@@ -1,6 +1,6 @@
 {
   "name": "@elchika-inc/ts-review-graph-core",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Core library for TypeScript dependency graph analysis (SQLite + ts-morph)",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,7 +10,13 @@
     "README.md",
     "LICENSE"
   ],
-  "keywords": ["typescript", "dependency-graph", "sqlite", "ts-morph", "blast-radius"],
+  "keywords": [
+    "typescript",
+    "dependency-graph",
+    "sqlite",
+    "ts-morph",
+    "blast-radius"
+  ],
   "author": "Naoto Nishikawa",
   "license": "MIT",
   "repository": {
@@ -18,8 +24,12 @@
     "url": "https://github.com/elchika-inc/ts-review-graph"
   },
   "homepage": "https://github.com/elchika-inc/ts-review-graph#readme",
-  "bugs": { "url": "https://github.com/elchika-inc/ts-review-graph/issues" },
-  "engines": { "node": ">=20" },
+  "bugs": {
+    "url": "https://github.com/elchika-inc/ts-review-graph/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",

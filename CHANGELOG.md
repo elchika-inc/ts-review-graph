@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-05-05
+
+### Fixed
+- **`HAS_TEST` edge FK violation** — `analyzeProject` now skips `node_modules` paths when creating `HAS_TEST` edges. Previously, test files importing from packages that ship TypeScript source (e.g. `vitest`) caused a `FOREIGN KEY constraint failed` error because the resolved `node_modules` path was used as `source_id` but never inserted into the `nodes` table.
+- **Cross-tsconfig FK violation in `buildFullGraph`** — insertion is now split into three passes (all nodes → all edges → all hashes) so that edges from one tsconfig can safely reference nodes from another tsconfig. The previous single-loop approach inserted edges before the target tsconfig's nodes were present.
+
 ## [0.3.2] - 2026-05-03
 
 ### Added
