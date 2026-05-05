@@ -6,6 +6,11 @@ import { realpathSync } from "node:fs";
 // パストラバーサル（../../）や絶対パス指定によるプロジェクト外アクセスを防ぐ
 // シンボリックリンクバイパス対策: ファイルが存在する場合は realpathSync で検証する
 export function resolveFilePath(file: string): string {
+  // ファイルパスに改行文字が含まれることはあり得ない — 早期拒否で下流処理を保護する
+  if (/[\r\n]/.test(file)) {
+    throw new Error(`Path traversal detected: ${file}`);
+  }
+
   const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
   // TS_REVIEW_GRAPH_DB 未設定時は process.cwd() をプロジェクトルートとして使用
   const projectRoot = dbPath

@@ -771,17 +771,25 @@ describe("相対パス解決（get_impact / get_test_coverage / query_graph）",
 });
 
 describe("出力サニタイズ（改行インジェクション対策）", () => {
-  it("query_graph: from に改行が含まれてもレスポンステキストに改行が混入しない", () => {
+  it("query_graph: from に改行（\\n）が含まれる場合は isError を返す", () => {
+    // resolveFilePath が \\r\\n を含むパスを Path traversal として拒否する
     const result = registerTools(db, "query_graph", {
       from: `${IMPL_FILE}\nevil-injection`,
       direction: "forward",
       depth: 1,
     });
-    // from が DB に存在しないため結果は空だが、isError にならない
-    expect(result.isError).toBeFalsy();
-    const text = result.content[0].text;
-    // from= の値部分に改行が混入していないこと
-    expect(text).not.toMatch(/from=.*\nevil-injection/);
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal detected");
+  });
+
+  it("query_graph: from に CR（\\r）が含まれる場合は isError を返す", () => {
+    const result = registerTools(db, "query_graph", {
+      from: `${IMPL_FILE}\revil-injection`,
+      direction: "forward",
+      depth: 1,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal detected");
   });
 
   it("get_type_usages: type_name に改行が含まれてもレスポンステキストに混入しない", () => {
