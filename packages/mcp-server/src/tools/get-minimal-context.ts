@@ -192,11 +192,16 @@ export function getMinimalContext(
 
     lines.push(``, `SKIP: ${Math.max(0, totalFiles - reverseFiles.size - forwardFiles.size)} other files — not in blast radius`);
   } else {
-    const totalReverse = reverseFiles.size;
+    const displayedReverse: [string, string][] = [];
+    for (const [file, reason] of reverseFiles) {
+      if (changedSet.has(file)) continue;
+      displayedReverse.push([file, reason]);
+    }
+    const totalReverse = displayedReverse.length;
     lines.push(`READ THESE FILES ONLY (${totalReverse} files, mode=${mode}, depth=${maxDepth}):`);
     let i = 1;
     let shown = 0;
-    for (const [file, reason] of reverseFiles) {
+    for (const [file, reason] of displayedReverse) {
       if (shown >= MAX_CONTEXT_FILES) break;
       lines.push(`  ${i++}. ${file}  [${reason.replace(/[\r\n]/g, "")}]`);
       shown++;
@@ -204,7 +209,7 @@ export function getMinimalContext(
     if (totalReverse > MAX_CONTEXT_FILES) {
       lines.push(`  ... (${totalReverse - MAX_CONTEXT_FILES} more — narrow changed_files or use review mode)`);
     }
-    lines.push(``, `SKIP: ${Math.max(0, totalFiles - totalReverse)} other files — not in blast radius`);
+    lines.push(``, `SKIP: ${Math.max(0, totalFiles - reverseFiles.size)} other files — not in blast radius`);
   }
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

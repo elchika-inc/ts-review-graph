@@ -61,7 +61,7 @@ describe("updateFile", () => {
     expect(node).toBeUndefined(); // baz ノードが消えている
   });
 
-  it("ファイルが存在しない場合はノードとハッシュを削除して 'skipped' を返す", () => {
+  it("ファイルが存在しない場合はノードとハッシュを削除して 'deleted' を返す", () => {
     const filePath = path.join(tmpDir, "d.ts");
     writeFileSync(filePath, "export function gone() {}");
     updateFile(db, filePath);
@@ -70,7 +70,7 @@ describe("updateFile", () => {
     rmSync(filePath);
     const result = updateFile(db, filePath);
 
-    expect(result).toBe("skipped");
+    expect(result).toBe("deleted");
     const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all(filePath);
     expect(nodes.length).toBe(0);
     const hash = db.prepare("SELECT * FROM file_hashes WHERE file = ?").get(filePath);
