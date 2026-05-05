@@ -601,6 +601,18 @@ describe("SKIP count の数値検証", () => {
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("SKIP: 1 other files");
   });
+
+  it("implement モード: 変更ファイルが DB 未登録の場合、全 DB ファイルがブラスト外になる", () => {
+    // brand-new.ts は DB に存在しない → reverseFiles.size=0, forwardFiles.size=0
+    // SKIP = totalFiles - 0 - 0 = 3 (全 DB ファイルがブラスト外)
+    const newFile = path.join(TEST_PROJECT_ROOT, "brand-new.ts");
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [newFile],
+      mode: "implement",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("SKIP: 3 other files");
+  });
 });
 
 describe("get_minimal_context 出力フォーマット", () => {
