@@ -1,6 +1,6 @@
 {
   "name": "@elchika-inc/ts-review-graph-core",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Core library for TypeScript dependency graph analysis (SQLite + ts-morph)",
   "type": "module",
   "main": "./dist/index.js",

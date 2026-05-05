@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-05-06
+
+### Fixed
+- **Relative path resolution in `get_impact`, `get_test_coverage`, `query_graph`** — these tools now call `resolveFilePath()` before passing the file path to SQLite queries and `computeBlastRadius()`. Previously, relative paths produced empty results because the DB stores node paths as absolute paths. Absolute paths continue to work unchanged.
+- **`\r\n` injection rejection in `resolveFilePath`** — paths containing carriage return or newline characters are now rejected immediately with `Path traversal detected`, preventing log-injection attacks and malformed SQL via CRLF.
+- **Extracted shared `resolve-path.ts` module** — `resolveFilePath()` is now a single source of truth used by all four MCP tools (`get_minimal_context`, `get_impact`, `get_test_coverage`, `query_graph`).
+
 ## [0.3.3] - 2026-05-05
 
 ### Fixed
