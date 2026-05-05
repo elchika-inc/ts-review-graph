@@ -50,6 +50,7 @@ describe("analyzeProject", () => {
     const hasTestEdges = edges.filter((e) => e.kind === "HAS_TEST");
     for (const edge of hasTestEdges) {
       expect(edge.sourceId).not.toContain("node_modules");
+      expect(edge.sourceId).toContain("impl.ts");
     }
   });
 });

@@ -154,34 +154,39 @@ describe("buildFullGraph", () => {
   });
 
   it("tsconfig 間クロス参照がある場合も FK 制約違反が起きない", () => {
-    // dir1: lib.ts (tsconfig1)
-    // dir2: app.ts と app.test.ts (tsconfig2) — app.test.ts が ../dir1/lib.ts を import
-    const dir1 = path.join(os.tmpdir(), `ts-rg-cross-lib-${randomUUID()}`);
-    const dir2 = path.join(os.tmpdir(), `ts-rg-cross-app-${randomUUID()}`);
+    // parentDir/lib/lib.ts (libTsconfig)
+    // parentDir/app/app.ts + app.test.ts (appTsconfig) — app.test.ts が "../lib/lib.js" を import
+    // appTsconfig を tsconfig[0] に渡し、libTsconfig を tsconfig[1] にすることで
+    // 旧コード(単一ループ)では tsconfig[0] のエッジ挿入時に lib.ts ノードが未存在 → FK 違反が発生した
+    const parentDir = path.join(os.tmpdir(), `ts-rg-cross-${randomUUID()}`);
+    const libDir = path.join(parentDir, "lib");
+    const appDir = path.join(parentDir, "app");
     try {
-      mkdirSync(dir1, { recursive: true });
-      writeFileSync(path.join(dir1, "lib.ts"), "export function libFn() { return 1; }");
+      mkdirSync(libDir, { recursive: true });
+      writeFileSync(path.join(libDir, "lib.ts"), "export function libFn() { return 1; }");
       writeFileSync(
-        path.join(dir1, "tsconfig.json"),
+        path.join(libDir, "tsconfig.json"),
         JSON.stringify({ compilerOptions: { target: "ES2022", module: "ES2022" }, include: ["lib.ts"] })
       );
 
-      mkdirSync(dir2, { recursive: true });
-      writeFileSync(path.join(dir2, "app.ts"), "export function appFn() { return 2; }");
+      mkdirSync(appDir, { recursive: true });
+      writeFileSync(path.join(appDir, "app.ts"), "export function appFn() { return 2; }");
       writeFileSync(
-        path.join(dir2, "app.test.ts"),
-        `import { appFn } from "./app.js";\nimport { libFn } from "${dir1}/lib.js";\nexport {};`
+        path.join(appDir, "app.test.ts"),
+        `import { appFn } from "./app.js";\nimport { libFn } from "../lib/lib.js";\nexport {};`
       );
       writeFileSync(
-        path.join(dir2, "tsconfig.json"),
+        path.join(appDir, "tsconfig.json"),
         JSON.stringify({ compilerOptions: { target: "ES2022", module: "ES2022" }, include: ["app.ts", "app.test.ts"] })
       );
 
+      // tsconfig[0] = appTsconfig (HAS_TEST エッジが lib.ts を sourceId として参照)
+      // tsconfig[1] = libTsconfig (lib.ts ノードの供給源)
       // FK 制約違反が起きなければ成功
       expect(() =>
         buildFullGraph(db, [
-          path.join(dir1, "tsconfig.json"),
-          path.join(dir2, "tsconfig.json"),
+          path.join(appDir, "tsconfig.json"),
+          path.join(libDir, "tsconfig.json"),
         ])
       ).not.toThrow();
 
@@ -190,8 +195,7 @@ describe("buildFullGraph", () => {
       const libNode = db.prepare("SELECT * FROM nodes WHERE name = 'libFn'").get();
       expect(libNode).toBeTruthy();
     } finally {
-      rmSync(dir1, { recursive: true, force: true });
-      rmSync(dir2, { recursive: true, force: true });
+      rmSync(parentDir, { recursive: true, force: true });
     }
   });
 });
