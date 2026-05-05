@@ -683,6 +683,80 @@ describe("get_type_usages MAX_TYPE_RESULTS 打ち切り", () => {
   });
 });
 
+describe("相対パス解決（get_impact / get_test_coverage / query_graph）", () => {
+  // 修正前: これらのツールは resolveFilePath を呼ばず生のパスを DB に渡すため、
+  // 相対パスを渡すと常に "No dependents found" / 空結果が返っていた。
+  it("get_impact: 相対パスでも絶対パスと同じ結果を返す", () => {
+    const relPath = path.relative(TEST_PROJECT_ROOT, IMPL_FILE); // "impl.ts"
+    const resultAbs = registerTools(db, "get_impact", { changed_file: IMPL_FILE });
+    const resultRel = registerTools(db, "get_impact", { changed_file: relPath });
+    expect(resultRel.isError).toBeFalsy();
+    // 相対パスも絶対パスと同じ依存ファイル (impl.test.ts) を返す
+    expect(resultRel.content[0].text).toContain("impl.test.ts");
+    expect(resultRel.content[0].text).not.toContain("No dependents found");
+    // ヘッダー行を除いた本文が絶対パス呼び出しと一致する
+    const bodyAbs = resultAbs.content[0].text.split("\n").slice(1).join("\n");
+    const bodyRel = resultRel.content[0].text.split("\n").slice(1).join("\n");
+    expect(bodyRel).toBe(bodyAbs);
+  });
+
+  it("get_test_coverage: 相対パスでも絶対パスと同じ結果を返す", () => {
+    const relPath = path.relative(TEST_PROJECT_ROOT, IMPL_FILE);
+    const resultAbs = registerTools(db, "get_test_coverage", { file: IMPL_FILE });
+    const resultRel = registerTools(db, "get_test_coverage", { file: relPath });
+    expect(resultRel.isError).toBeFalsy();
+    expect(resultRel.content[0].text).toContain("impl.test.ts");
+    expect(resultRel.content[0].text).not.toContain("No test files found");
+    // ヘッダー行（"Test files for '...'"）は入力パスをそのまま表示するため除いて比較
+    const bodyAbs = resultAbs.content[0].text.split("\n").slice(1).join("\n");
+    const bodyRel = resultRel.content[0].text.split("\n").slice(1).join("\n");
+    expect(bodyRel).toBe(bodyAbs);
+  });
+
+  it("query_graph: 相対パスでも絶対パスと同じ結果を返す", () => {
+    const relPath = path.relative(TEST_PROJECT_ROOT, IMPL_FILE);
+    const resultAbs = registerTools(db, "query_graph", {
+      from: IMPL_FILE,
+      direction: "forward",
+      edge_kind: "IMPORTS_FROM",
+      depth: 1,
+    });
+    const resultRel = registerTools(db, "query_graph", {
+      from: relPath,
+      direction: "forward",
+      edge_kind: "IMPORTS_FROM",
+      depth: 1,
+    });
+    expect(resultRel.isError).toBeFalsy();
+    expect(resultRel.content[0].text).toContain("dep.ts");
+    // ヘッダーの from= は入力値をそのまま表示するため省いて本文のみ比較
+    const bodyAbs = resultAbs.content[0].text.split("\n").slice(1).join("\n");
+    const bodyRel = resultRel.content[0].text.split("\n").slice(1).join("\n");
+    expect(bodyRel).toBe(bodyAbs);
+  });
+
+  it("get_impact: パストラバーサル（../../）は isError を返す", () => {
+    const result = registerTools(db, "get_impact", { changed_file: "../../etc/passwd" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal detected");
+  });
+
+  it("get_test_coverage: パストラバーサルは isError を返す", () => {
+    const result = registerTools(db, "get_test_coverage", { file: "../../etc/passwd" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal detected");
+  });
+
+  it("query_graph: パストラバーサルは isError を返す", () => {
+    const result = registerTools(db, "query_graph", {
+      from: "../../etc/passwd",
+      direction: "forward",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Path traversal detected");
+  });
+});
+
 describe("出力サニタイズ（改行インジェクション対策）", () => {
   it("query_graph: from に改行が含まれてもレスポンステキストに改行が混入しない", () => {
     const result = registerTools(db, "query_graph", {

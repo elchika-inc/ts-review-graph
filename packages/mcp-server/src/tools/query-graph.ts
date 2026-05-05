@@ -1,5 +1,6 @@
 import type { Db } from "@elchika-inc/ts-review-graph-core";
 import type { ToolResult } from "./types.js";
+import { resolveFilePath } from "./resolve-path.js";
 
 const VALID_EDGE_KINDS = new Set(["IMPORTS_FROM", "TYPED_BY", "IMPLEMENTS", "EXTENDS", "HAS_TEST"]);
 const MAX_RESULTS = 200;
@@ -59,6 +60,16 @@ export function queryGraph(
     };
   }
 
+  let resolvedFrom: string;
+  try {
+    resolvedFrom = resolveFilePath(from);
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `無効なファイルパス: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
+
   const rawEdgeKind = args["edge_kind"];
   if (rawEdgeKind !== undefined && (typeof rawEdgeKind !== "string" || !VALID_EDGE_KINDS.has(rawEdgeKind))) {
     return {
@@ -96,8 +107,8 @@ export function queryGraph(
   let rows: Array<{ id: string; file: string; name: string; kind: string }>;
   try {
     rows = edgeKind
-      ? (stmt.all({ from, depth, edgeKind }) as typeof rows)
-      : (stmt.all({ from, depth }) as typeof rows);
+      ? (stmt.all({ from: resolvedFrom, depth, edgeKind }) as typeof rows)
+      : (stmt.all({ from: resolvedFrom, depth }) as typeof rows);
   } catch (err) {
     return {
       content: [{ type: "text", text: `グラフクエリに失敗しました: ${err instanceof Error ? err.message : String(err)}` }],

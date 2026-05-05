@@ -1,5 +1,6 @@
 import type { Db } from "@elchika-inc/ts-review-graph-core";
 import type { ToolResult } from "./types.js";
+import { resolveFilePath } from "./resolve-path.js";
 
 const MAX_TEST_RESULTS = 100;
 
@@ -32,9 +33,19 @@ export function getTestCoverage(
     };
   }
 
+  let resolvedFile: string;
+  try {
+    resolvedFile = resolveFilePath(file);
+  } catch (err) {
+    return {
+      content: [{ type: "text", text: `無効なファイルパス: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
+
   let rows: Array<{ file: string }>;
   try {
-    rows = getTestCoverageStmt(db).all(file) as typeof rows;
+    rows = getTestCoverageStmt(db).all(resolvedFile) as typeof rows;
   } catch (err) {
     return {
       content: [{ type: "text", text: `テストカバレッジの取得に失敗しました: ${err instanceof Error ? err.message : String(err)}` }],
