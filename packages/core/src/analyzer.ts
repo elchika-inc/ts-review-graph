@@ -102,7 +102,7 @@ export function analyzeProject(tsconfigPath: string): AnalysisResult {
   // HAS_TEST エッジ: テストファイルが import する実装ファイルに紐付け
   for (const sf of project.getSourceFiles()) {
     const filePath = sf.getFilePath();
-    if (!isTestFile(filePath)) continue;
+    if (!isTestFile(filePath) || filePath.includes("node_modules")) continue;
     for (const decl of sf.getImportDeclarations()) {
       const resolved = decl.getModuleSpecifierSourceFile();
       if (resolved && !isTestFile(resolved.getFilePath()) && !resolved.getFilePath().includes("node_modules")) {

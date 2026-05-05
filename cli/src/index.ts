@@ -272,20 +272,20 @@ program
       buildFullGraph(db!, existingPaths);
       const elapsed = Date.now() - startMs;
       console.log(`グラフ構築完了 (${elapsed}ms)`);
+      try {
+        const { nodeCount } = db!
+          .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
+          .get() as { nodeCount: number };
+        const { edgeCount } = db!
+          .prepare("SELECT COUNT(*) as edgeCount FROM edges")
+          .get() as { edgeCount: number };
+        console.log(`  ${nodeCount} nodes, ${edgeCount} edges`);
+      } catch {
+        // 統計取得の失敗はグラフ構築の成否に影響しない
+      }
     } catch (err) {
       console.error("グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
       process.exit(1);
-    }
-    try {
-      const { nodeCount } = db!
-        .prepare("SELECT COUNT(*) as nodeCount FROM nodes")
-        .get() as { nodeCount: number };
-      const { edgeCount } = db!
-        .prepare("SELECT COUNT(*) as edgeCount FROM edges")
-        .get() as { edgeCount: number };
-      console.log(`  ${nodeCount} nodes, ${edgeCount} edges`);
-    } catch {
-      // 統計取得の失敗はグラフ構築の成否に影響しない
     } finally {
       db?.close();
     }
@@ -325,8 +325,10 @@ program
       const result = updateFile(db!, resolvedFile);
       if (result === "skipped") {
         console.log(`スキップ（変更なし）: ${file}`);
+      } else if (result === "deleted") {
+        console.log(`削除済みノードをクリア: ${file}`);
       } else {
-        console.log(`更新完了: ${file}`);
+        console.log(`更新完了: ${file} (TYPED_BY/IMPLEMENTS/EXTENDS/HAS_TEST エッジは次回 build で復元されます)`);
       }
     } catch (err) {
       console.error("更新に失敗しました:", err instanceof Error ? err.message : err);

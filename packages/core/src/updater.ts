@@ -66,14 +66,14 @@ function getStoredHash(db: Db, file: string): string | undefined {
   return row?.hash;
 }
 
-export function updateFile(db: Db, filePath: string): "skipped" | "updated" {
+export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "deleted" {
   if (!existsSync(filePath)) {
     const stmts = getUpdateStmts(db);
     db.transaction(() => {
       stmts.deleteNodes.run(filePath);
       stmts.deleteHash.run(filePath);
     })();
-    return "skipped";
+    return "deleted";
   }
 
   const content = readFileSync(filePath, "utf-8");
