@@ -194,6 +194,8 @@ describe("buildFullGraph", () => {
       expect(appNode).toBeTruthy();
       const libNode = db.prepare("SELECT * FROM nodes WHERE name = 'libFn'").get();
       expect(libNode).toBeTruthy();
+      const hasTestEdge = db.prepare("SELECT * FROM edges WHERE kind = 'HAS_TEST'").get();
+      expect(hasTestEdge).toBeTruthy();
     } finally {
       rmSync(parentDir, { recursive: true, force: true });
     }
