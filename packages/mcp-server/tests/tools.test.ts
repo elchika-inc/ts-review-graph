@@ -273,6 +273,7 @@ describe("get_impact", () => {
   it("get_impact: 空白のみの changed_file は isError を返す", () => {
     const result = registerTools(db, "get_impact", { changed_file: "   " });
     expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("non-empty string");
   });
 });
 
