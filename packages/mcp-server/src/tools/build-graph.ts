@@ -52,6 +52,7 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
     Array.isArray(rawTsconfigs) && rawTsconfigs.every((x) => typeof x === "string")
       ? (rawTsconfigs as string[])
       : undefined;
+
   const tsconfigPaths = loadTsconfigPaths(cwd, argTsconfigs);
 
   const missing = tsconfigPaths.filter((p) => !existsSync(p));

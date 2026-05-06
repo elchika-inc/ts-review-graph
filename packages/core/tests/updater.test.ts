@@ -77,6 +77,34 @@ describe("updateFile", () => {
     expect(hash).toBeUndefined();
   });
 
+  it("エクスポート変数ノードが挿入される", () => {
+    const filePath = path.join(tmpDir, "vars.ts");
+    writeFileSync(filePath, "export const myConst = 42;");
+
+    updateFile(db, filePath);
+
+    const node = db.prepare("SELECT * FROM nodes WHERE id = ?").get(`${filePath}::myConst`);
+    expect(node).toBeTruthy();
+    expect((node as any).kind).toBe("variable");
+  });
+
+  it("import 先ノードが DB に存在する場合に IMPORTS_FROM エッジが復元される", () => {
+    const libPath = path.join(tmpDir, "lib.ts");
+    const appPath = path.join(tmpDir, "app.ts");
+    writeFileSync(libPath, "export function libFn() {}");
+    writeFileSync(appPath, `import { libFn } from "./lib.js";\nexport function useLib() { return libFn(); }`);
+
+    // まず lib.ts を DB に登録して lib.ts::__file__ ノードを作成
+    updateFile(db, libPath);
+    // 次に app.ts を更新（lib.ts::__file__ が DB に存在するので IMPORTS_FROM エッジが生成される）
+    updateFile(db, appPath);
+
+    const edge = db
+      .prepare("SELECT * FROM edges WHERE source_id = ? AND target_id = ? AND kind = 'IMPORTS_FROM'")
+      .get(`${appPath}::__file__`, `${libPath}::__file__`);
+    expect(edge).toBeTruthy();
+  });
+
   it("削除後に同名ファイルが同じ内容で再作成されたらグラフを更新する", () => {
     const filePath = path.join(tmpDir, "e.ts");
     const content = "export function revived() {}";
