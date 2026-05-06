@@ -147,6 +147,24 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
       });
     }
 
+    // 変数ノード（エクスポートされたもののみ）
+    for (const vs of sf.getVariableStatements()) {
+      if (!vs.isExported()) continue;
+      for (const decl of vs.getDeclarations()) {
+        const name = decl.getName();
+        if (!name) continue;
+        insertNode.run({
+          id: `${filePath}::${name}`,
+          kind: "variable",
+          name,
+          file: filePath,
+          line: decl.getStartLineNumber(),
+          signature: null,
+          typeRefs: "[]",
+        });
+      }
+    }
+
     // IMPORTS_FROM エッジを復元（相対インポートのみ）
     // Note: TYPED_BY/IMPLEMENTS/EXTENDS/HAS_TEST はクロスファイル解決が必要なため
     // 次回フル build 時に復元される
@@ -156,12 +174,14 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
       if (!moduleSpec.startsWith(".")) continue;
 
       const base = resolvePath(dirname(filePath), moduleSpec);
+      // ESM imports use .js extension but the file on disk is .ts
+      const tsBase = base.endsWith(".js") ? base.slice(0, -3) : base;
       const candidates = [
         base,
-        `${base}.ts`,
-        `${base}.tsx`,
-        `${base}/index.ts`,
-        `${base}/index.tsx`,
+        `${tsBase}.ts`,
+        `${tsBase}.tsx`,
+        `${tsBase}/index.ts`,
+        `${tsBase}/index.tsx`,
       ];
 
       for (const candidate of candidates) {
@@ -188,6 +208,7 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
   });
 
   run();
+  project.removeSourceFile(sf);
   return "updated";
 }
 

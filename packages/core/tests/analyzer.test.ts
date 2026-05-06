@@ -25,18 +25,30 @@ describe("analyzeProject", () => {
     const { edges } = analyzeProject(FIXTURE);
     const importEdges = edges.filter((e) => e.kind === "IMPORTS_FROM");
     expect(importEdges.length).toBeGreaterThan(0);
+    // b.ts が a.ts を import するエッジが存在する
+    expect(importEdges.some((e) => e.sourceId.includes("b.ts") && e.targetId.includes("a.ts"))).toBe(true);
   });
 
   it("IMPLEMENTS エッジを生成する", () => {
     const { edges } = analyzeProject(FIXTURE);
     const implementsEdges = edges.filter((e) => e.kind === "IMPLEMENTS");
     expect(implementsEdges.length).toBeGreaterThan(0);
+    // b.ts::Dog が a.ts::Animal を implements するエッジが存在する
+    expect(implementsEdges.some(
+      (e) => e.sourceId.includes("b.ts") && e.sourceId.includes("Dog") &&
+             e.targetId.includes("a.ts") && e.targetId.includes("Animal")
+    )).toBe(true);
   });
 
   it("TYPED_BY エッジを生成する（引数型参照）", () => {
     const { edges } = analyzeProject(FIXTURE);
     const typedByEdges = edges.filter((e) => e.kind === "TYPED_BY");
     expect(typedByEdges.length).toBeGreaterThan(0);
+    // b.ts::introduce が a.ts::Animal に型参照するエッジが存在する（b.ts::Dog と区別して確認）
+    expect(typedByEdges.some(
+      (e) => e.sourceId.includes("b.ts") && e.sourceId.includes("introduce") &&
+             e.targetId.includes("a.ts") && e.targetId.includes("Animal")
+    )).toBe(true);
   });
 
   it("HAS_TEST エッジを生成する", () => {

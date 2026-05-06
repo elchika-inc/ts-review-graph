@@ -288,7 +288,7 @@ describe("get_type_usages", () => {
     const typedFile = path.join(TEST_PROJECT_ROOT, "typed.ts");
     db.prepare(
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-    ).run("typed::__file__", "file", "typed.ts", typedFile, 1, '["MonitorConfig","string"]');
+    ).run("typed::__file__", "file", "typed.ts", typedFile, 1, '["types.ts::MonitorConfig","string"]');
 
     const result = registerTools(db, "get_type_usages", { type_name: "MonitorConfig" });
     expect(result.isError).toBeFalsy();
@@ -313,7 +313,7 @@ describe("get_type_usages", () => {
     const underscoreFile = path.join(TEST_PROJECT_ROOT, "underscore_typed.ts");
     db.prepare(
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-    ).run("underscore::__file__", "file", "underscore_typed.ts", underscoreFile, 1, '["My_Type"]');
+    ).run("underscore::__file__", "file", "underscore_typed.ts", underscoreFile, 1, '["types.ts::My_Type"]');
     const result = registerTools(db, "get_type_usages", { type_name: "My_Type" });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("My_Type");
@@ -686,7 +686,7 @@ describe("get_type_usages MAX_TYPE_RESULTS 打ち切り", () => {
     );
     for (let i = 0; i < 501; i++) {
       const f = path.join(TEST_PROJECT_ROOT, `type_test_${i}.ts`);
-      insert.run(`type_test_${i}::__file__`, "file", `type_test_${i}.ts`, f, 1, '["MyUniqueType"]');
+      insert.run(`type_test_${i}::__file__`, "file", `type_test_${i}.ts`, f, 1, '["types.ts::MyUniqueType"]');
     }
 
     const result = registerTools(db, "get_type_usages", { type_name: "MyUniqueType" });
