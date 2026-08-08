@@ -165,11 +165,17 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
       }
     }
 
-    // IMPORTS_FROM エッジを復元（相対インポートのみ）
+    // IMPORTS_FROM エッジを復元（相対 import / re-export のみ）
     // Note: TYPED_BY/IMPLEMENTS/EXTENDS/HAS_TEST はクロスファイル解決が必要なため
     // 次回フル build 時に復元される
-    for (const decl of sf.getImportDeclarations()) {
-      const moduleSpec = decl.getModuleSpecifierValue();
+    const moduleSpecifiers = [
+      ...sf.getImportDeclarations().map((decl) => decl.getModuleSpecifierValue()),
+      ...sf
+        .getExportDeclarations()
+        .map((decl) => decl.getModuleSpecifierValue())
+        .filter((moduleSpec): moduleSpec is string => moduleSpec !== undefined),
+    ];
+    for (const moduleSpec of moduleSpecifiers) {
       // 相対パスのみ解決（npm パッケージは除外）
       if (!moduleSpec.startsWith(".")) continue;
 

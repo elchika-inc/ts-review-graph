@@ -19,7 +19,7 @@ pnpm test
 ```
 packages/
   core/        — Graph build & query engine (SQLite + ts-morph)
-  mcp-server/  — MCP server (7 tools)
+  mcp-server/  — MCP server (8 tools)
   plugin/      — Claude Code plugin (commands/hooks/skills)
 cli/           — CLI entry point
 ```

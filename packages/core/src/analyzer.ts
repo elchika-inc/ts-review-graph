@@ -95,6 +95,18 @@ export function analyzeProject(tsconfigPath: string): AnalysisResult {
       }
     }
 
+    // re-export もファイル依存として扱う
+    for (const decl of sf.getExportDeclarations()) {
+      const resolved = decl.getModuleSpecifierSourceFile();
+      if (resolved) {
+        addEdge({
+          sourceId: fileId(filePath),
+          targetId: fileId(resolved.getFilePath()),
+          kind: "IMPORTS_FROM",
+        });
+      }
+    }
+
     // 関数・クラス・インターフェース・型エイリアスのノードとエッジ
     extractDeclarations(sf, filePath, nodes, addEdge);
   }

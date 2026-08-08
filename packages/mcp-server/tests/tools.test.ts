@@ -275,6 +275,76 @@ describe("get_impact", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("non-empty string");
   });
+
+  it("get_impact: format=mermaid で対象・影響ファイルと依存方向を図示する", () => {
+    const result = registerTools(db, "get_impact", {
+      changed_file: DEP_FILE,
+      format: "mermaid",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("```mermaid\nflowchart TD");
+    expect(result.content[0].text).toContain(`n0[\"${DEP_FILE}\"]`);
+    expect(result.content[0].text).toContain(`n1[\"${IMPL_FILE}\"]`);
+    expect(result.content[0].text).toContain("n1 -->|IMPORTS_FROM| n0");
+    expect(result.content[0].text).toContain("class n0 target;");
+    expect(result.content[0].text).toContain("classDef target");
+  });
+
+  it("get_impact: mermaid は50ノードで打ち切りを明示する", () => {
+    const insertNode = db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    );
+    const insertEdge = db.prepare(
+      "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
+    );
+    for (let i = 0; i < 50; i++) {
+      const id = `impact-${i}::__file__`;
+      const file = path.join(TEST_PROJECT_ROOT, `impact-${i}.ts`);
+      insertNode.run(id, "file", `impact-${i}.ts`, file, 1, "[]");
+      insertEdge.run(id, "dep::__file__", "IMPORTS_FROM");
+    }
+
+    const result = registerTools(db, "get_impact", {
+      changed_file: DEP_FILE,
+      format: "mermaid",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("truncated at 50 nodes");
+    const nodeLines = result.content[0].text
+      .split("\n")
+      .filter((line) => /^  n\d+\[/.test(line));
+    expect(nodeLines).toHaveLength(50);
+  });
+
+  it("get_impact: mermaid のファイル名でコードフェンスを閉じさせない", () => {
+    const maliciousFile = path.join(TEST_PROJECT_ROOT, "evil```mermaid.ts");
+    db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    ).run("malicious::__file__", "file", "evil```mermaid.ts", maliciousFile, 1, "[]");
+    db.prepare(
+      "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
+    ).run("malicious::__file__", "dep::__file__", "IMPORTS_FROM");
+
+    const result = registerTools(db, "get_impact", {
+      changed_file: DEP_FILE,
+      format: "mermaid",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text.match(/```/g)).toHaveLength(2);
+    expect(result.content[0].text).toContain("evil&#96;&#96;&#96;mermaid.ts");
+  });
+
+  it("get_impact: format が不正な場合は isError を返す", () => {
+    const result = registerTools(db, "get_impact", {
+      changed_file: IMPL_FILE,
+      format: "svg",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("format must be one of");
+  });
 });
 
 describe("get_type_usages", () => {
@@ -370,6 +440,57 @@ describe("query_graph", () => {
       edge_kind: "INVALID_KIND",
     });
     expect(result.isError).toBe(true);
+  });
+});
+
+describe("find_cycles", () => {
+  it("IMPORTS_FROM の循環を回転違いで重複せず返す", () => {
+    db.prepare(
+      "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
+    ).run("dep::__file__", "impl::__file__", "IMPORTS_FROM");
+
+    const result = registerTools(db, "find_cycles", {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("Circular import cycles (1)");
+    expect(result.content[0].text).toContain(`${IMPL_FILE} -> ${DEP_FILE} -> ${IMPL_FILE}`);
+  });
+
+  it("循環がない場合は明示的なメッセージを返す", () => {
+    const result = registerTools(db, "find_cycles", {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No circular import cycles found");
+  });
+
+  it("max_cycles で件数を制限し打ち切りを明示する", () => {
+    const firstFile = path.join(TEST_PROJECT_ROOT, "first.ts");
+    const secondFile = path.join(TEST_PROJECT_ROOT, "second.ts");
+    db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    ).run("first::__file__", "file", "first.ts", firstFile, 1, "[]");
+    db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    ).run("second::__file__", "file", "second.ts", secondFile, 1, "[]");
+    const insertEdge = db.prepare(
+      "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
+    );
+    insertEdge.run("impl::__file__", "dep::__file__", "IMPORTS_FROM");
+    insertEdge.run("dep::__file__", "impl::__file__", "IMPORTS_FROM");
+    insertEdge.run("first::__file__", "second::__file__", "IMPORTS_FROM");
+    insertEdge.run("second::__file__", "first::__file__", "IMPORTS_FROM");
+
+    const result = registerTools(db, "find_cycles", { max_cycles: 1 });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("Circular import cycles (1)");
+    expect(result.content[0].text).toContain("truncated at 1 cycle");
+  });
+
+  it("max_cycles が不正な場合は isError を返す", () => {
+    const result = registerTools(db, "find_cycles", { max_cycles: 0 });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("max_cycles must be an integer between 1 and 100");
   });
 });
 
