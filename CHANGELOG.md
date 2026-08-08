@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-08-09
+
+### Added
+- **`get_impact` の Mermaid 出力** — `format: "mermaid"` で GitHub ネイティブの flowchart を出力できるようにした。ノードは最大50件に制限し、打ち切り時は省略件数を明示する
+- **`find_cycles` ツール** — `IMPORTS_FROM` エッジ上のファイル単位の循環依存を検出する8個目の MCP ツールを追加した
+
+### Fixed
+- **バレル re-export の依存グラフ反映** — `export * from` / `export { x } from` 経由の依存を `IMPORTS_FROM` エッジとして記録し、blast radius から利用者が欠落する問題を full build・増分更新の両経路で修正した
+
 ## [0.3.5] - 2026-05-06
 
 ### Fixed
