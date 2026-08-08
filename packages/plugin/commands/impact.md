@@ -9,3 +9,7 @@ If the argument ends with `.ts` or `.tsx`, call `get_impact` with `changed_file:
 Otherwise, call `get_type_usages` with `type_name: <argument>`.
 
 Display the result clearly.
+
+When a dependency graph is requested, call `get_impact` with
+`changed_file: <argument>` and `format: "mermaid"`. Display the returned
+Mermaid fence without removing it so GitHub-compatible renderers can draw the graph.

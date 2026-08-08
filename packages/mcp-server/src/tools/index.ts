@@ -49,6 +49,12 @@ export const TOOL_DEFINITIONS = [
       type: "object" as const,
       properties: {
         changed_file: { type: "string", description: "Absolute or project-root-relative file path" },
+        format: {
+          type: "string",
+          enum: ["text", "mermaid"],
+          default: "text",
+          description: "text=current detailed list (default), mermaid=GitHub-renderable dependency graph",
+        },
       },
       required: ["changed_file"],
     },
