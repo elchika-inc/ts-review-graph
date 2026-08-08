@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "../src/db.js";
 import { updateFile, buildFullGraph } from "../src/updater.js";
+import { computeBlastRadius } from "../src/blast.js";
 import { rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -105,6 +106,66 @@ describe("updateFile", () => {
     expect(edge).toBeTruthy();
   });
 
+  it("re-export を含む同一入力から full build と同じ IMPORTS_FROM エッジを生成する", () => {
+    const targetPath = path.join(tmpDir, "target.ts");
+    const namedPath = path.join(tmpDir, "named.ts");
+    const barrelPath = path.join(tmpDir, "index.ts");
+    const consumerPath = path.join(tmpDir, "consumer.ts");
+    const tsconfigPath = path.join(tmpDir, "tsconfig.json");
+    writeFileSync(targetPath, "export const target = 1;");
+    writeFileSync(namedPath, "export const named = 2;");
+    writeFileSync(
+      barrelPath,
+      'export * from "./target.js";\nexport { named } from "./named.js";'
+    );
+    writeFileSync(
+      consumerPath,
+      'import { target, named } from "./index.js";\nexport const value = target + named;'
+    );
+    writeFileSync(
+      tsconfigPath,
+      JSON.stringify({
+        compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" },
+        include: ["*.ts"],
+      })
+    );
+
+    buildFullGraph(db, [tsconfigPath]);
+    const fullEdges = db
+      .prepare("SELECT source_id, target_id, kind FROM edges WHERE kind = 'IMPORTS_FROM' ORDER BY source_id, target_id")
+      .all();
+
+    const incrementalDbPath = `/tmp/ts-review-graph-updater-incremental-${randomUUID()}.db`;
+    const incrementalDb = openDb(incrementalDbPath);
+    try {
+      updateFile(incrementalDb, targetPath);
+      updateFile(incrementalDb, namedPath);
+      updateFile(incrementalDb, barrelPath);
+      updateFile(incrementalDb, consumerPath);
+
+      const incrementalEdges = incrementalDb
+        .prepare("SELECT source_id, target_id, kind FROM edges WHERE kind = 'IMPORTS_FROM' ORDER BY source_id, target_id")
+        .all();
+      expect(fullEdges).toContainEqual({
+        source_id: `${barrelPath}::__file__`,
+        target_id: `${targetPath}::__file__`,
+        kind: "IMPORTS_FROM",
+      });
+      expect(fullEdges).toContainEqual({
+        source_id: `${barrelPath}::__file__`,
+        target_id: `${namedPath}::__file__`,
+        kind: "IMPORTS_FROM",
+      });
+      expect(incrementalEdges).toEqual(fullEdges);
+    } finally {
+      incrementalDb.close();
+      for (const ext of ["", "-wal", "-shm"]) {
+        const p = incrementalDbPath + ext;
+        if (existsSync(p)) rmSync(p);
+      }
+    }
+  });
+
   it("削除後に同名ファイルが同じ内容で再作成されたらグラフを更新する", () => {
     const filePath = path.join(tmpDir, "e.ts");
     const content = "export function revived() {}";
@@ -126,6 +187,31 @@ describe("updateFile", () => {
 });
 
 describe("buildFullGraph", () => {
+  it("barrel 経由で import するファイルを実体ファイルの blast radius に含める", () => {
+    const targetPath = path.join(tmpDir, "target.ts");
+    const barrelPath = path.join(tmpDir, "index.ts");
+    const consumerPath = path.join(tmpDir, "consumer.ts");
+    const tsconfigPath = path.join(tmpDir, "tsconfig.json");
+    writeFileSync(targetPath, "export const target = 1;");
+    writeFileSync(barrelPath, 'export * from "./target.js";');
+    writeFileSync(
+      consumerPath,
+      'import { target } from "./index.js";\nexport const value = target;'
+    );
+    writeFileSync(
+      tsconfigPath,
+      JSON.stringify({
+        compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext" },
+        include: ["*.ts"],
+      })
+    );
+
+    buildFullGraph(db, [tsconfigPath]);
+
+    const affectedFiles = computeBlastRadius(db, targetPath, 2).map((node) => node.file);
+    expect(affectedFiles).toContain(consumerPath);
+  });
+
   it("複数 tsconfig のノードを単一 DB にマージする", () => {
     // フィクスチャ1: temp ディレクトリに a.ts
     const dir1 = path.join(os.tmpdir(), `ts-rg-fixture1-${randomUUID()}`);
