@@ -6,6 +6,7 @@ import { getTestCoverage } from "./get-test-coverage.js";
 import { queryGraph } from "./query-graph.js";
 import { buildGraph } from "./build-graph.js";
 import { graphStatus } from "./graph-status.js";
+import { findCycles } from "./find-cycles.js";
 import type { ToolResult } from "./types.js";
 
 export const TOOL_DEFINITIONS = [
@@ -111,6 +112,26 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "find_cycles",
+    description:
+      "Find file-level circular dependencies across IMPORTS_FROM edges. " +
+      "Rotations of the same directed cycle are returned once. " +
+      "IMPORTS_FROMエッジ上のファイル単位の循環依存を検出する。",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        max_cycles: {
+          type: "number",
+          default: 20,
+          minimum: 1,
+          maximum: 100,
+          description: "Maximum number of cycles to return (default: 20)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
     name: "build_graph",
     description:
       "Build or rebuild the TypeScript dependency graph for this project. " +
@@ -169,6 +190,8 @@ export function registerTools(
       return getTestCoverage(db!, args);
     case "query_graph":
       return queryGraph(db!, args);
+    case "find_cycles":
+      return findCycles(db!, args);
     case "build_graph":
       return buildGraph(args);
     case "graph_status":

@@ -20,7 +20,7 @@ pnpm monorepo。4 パッケージで構成:
 | Package | Name | Role |
 |---------|------|------|
 | `packages/core` | `@elchika-inc/ts-review-graph-core` | グラフ構築・クエリエンジン (SQLite + ts-morph) |
-| `packages/mcp-server` | `@elchika-inc/ts-review-graph-mcp-server` | MCP サーバー (7 ツール) |
+| `packages/mcp-server` | `@elchika-inc/ts-review-graph-mcp-server` | MCP サーバー (8 ツール) |
 | `packages/plugin` | (配布専用) | Claude Code プラグイン (commands/hooks/skills) |
 | `cli/` | `@elchika-inc/ts-review-graph` | CLI ツール |
 

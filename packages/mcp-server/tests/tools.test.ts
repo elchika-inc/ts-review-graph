@@ -443,6 +443,57 @@ describe("query_graph", () => {
   });
 });
 
+describe("find_cycles", () => {
+  it("IMPORTS_FROM の循環を回転違いで重複せず返す", () => {
+    db.prepare(
+      "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
+    ).run("dep::__file__", "impl::__file__", "IMPORTS_FROM");
+
+    const result = registerTools(db, "find_cycles", {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("Circular import cycles (1)");
+    expect(result.content[0].text).toContain(`${IMPL_FILE} -> ${DEP_FILE} -> ${IMPL_FILE}`);
+  });
+
+  it("循環がない場合は明示的なメッセージを返す", () => {
+    const result = registerTools(db, "find_cycles", {});
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No circular import cycles found");
+  });
+
+  it("max_cycles で件数を制限し打ち切りを明示する", () => {
+    const firstFile = path.join(TEST_PROJECT_ROOT, "first.ts");
+    const secondFile = path.join(TEST_PROJECT_ROOT, "second.ts");
+    db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    ).run("first::__file__", "file", "first.ts", firstFile, 1, "[]");
+    db.prepare(
+      "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
+    ).run("second::__file__", "file", "second.ts", secondFile, 1, "[]");
+    const insertEdge = db.prepare(
+      "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
+    );
+    insertEdge.run("impl::__file__", "dep::__file__", "IMPORTS_FROM");
+    insertEdge.run("dep::__file__", "impl::__file__", "IMPORTS_FROM");
+    insertEdge.run("first::__file__", "second::__file__", "IMPORTS_FROM");
+    insertEdge.run("second::__file__", "first::__file__", "IMPORTS_FROM");
+
+    const result = registerTools(db, "find_cycles", { max_cycles: 1 });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("Circular import cycles (1)");
+    expect(result.content[0].text).toContain("truncated at 1 cycle");
+  });
+
+  it("max_cycles が不正な場合は isError を返す", () => {
+    const result = registerTools(db, "find_cycles", { max_cycles: 0 });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("max_cycles must be an integer between 1 and 100");
+  });
+});
+
 describe("build_graph", () => {
   it("build_graph: 実際の tsconfig からグラフを構築し、ノードを含む DB を返す", () => {
     const buildDbPath = `/tmp/ts-rg-mcp-build-test-${randomUUID()}.db`;

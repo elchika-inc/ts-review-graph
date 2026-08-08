@@ -94,10 +94,11 @@ SKIP: 1170 other files — not in blast radius
 | Tool | Key args | Description |
 |---|---|---|
 | `get_minimal_context` | `changed_files[]`, `mode` (default: `"review"`) | Minimal file set (REVERSE/FORWARD BFS) |
-| `get_impact` | `changed_file` | Files affected by a change, with depth |
+| `get_impact` | `changed_file`, `format` (`"text"` / `"mermaid"`) | Files affected by a change, with depth |
 | `get_type_usages` | `type_name` | Nodes that reference a type |
 | `get_test_coverage` | `file` | Corresponding test files |
 | `query_graph` | `from`, `edge_kind`, `direction`, `depth` | General-purpose graph traversal |
+| `find_cycles` | `max_cycles` (default: `20`) | File-level circular imports |
 | `build_graph` | `tsconfigs[]` (optional) | Rebuild the graph |
 | `graph_status` | — | Graph statistics |
 
