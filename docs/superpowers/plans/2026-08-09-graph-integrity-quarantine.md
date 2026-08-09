@@ -997,15 +997,17 @@ import { toProjectRelative } from "@elchika-inc/ts-review-graph-core";
 - [x] **Step 4: build_graph ツールを新シグネチャに合わせる**
 
 Task 4 で `buildFullGraph` が 3 引数になったため、`packages/mcp-server/src/tools/build-graph.ts:88`
-がコンパイルエラーになる。同ファイルは既に `cwd` としてプロジェクトルートを算出している
-（`envDb ? path.resolve(path.dirname(envDb), "..") : process.cwd()`）ので、それをそのまま渡す:
+がコンパイルエラーになる。同ファイルでは `const cwd = process.cwd()` を
+プロジェクトルートとして用い、それを渡す。`TS_REVIEW_GRAPH_DB` は DB の保存場所だけを
+変更し、プロジェクトルートは変更しない:
 
 ```ts
     buildFullGraph(db, tsconfigPaths, cwd);
 ```
 
-`loadTsconfigPaths` は `path.join(cwd, p)` で絶対パスを返すため、
-`buildFullGraph` 内の `toProjectRelative(projectRoot, p)` は正しく相対化できる。
+`loadTsconfigPaths` の config/fallback 分岐は絶対パスを返し、明示引数分岐は指定値を
+そのまま返す。明示された相対パスは `buildFullGraph` の `toProjectRelative` で起動 cwd
+基準に解決される。
 **`loadTsconfigPaths` は変更しないこと。**
 
 - [x] **Step 5: 呼び出し側を確認する**
@@ -1352,6 +1354,7 @@ git commit -m "feat(cli): status に health 行を追加し projectRoot を各�
 - Create: `cli/src/mcp-entry.ts`
 - Modify: `cli/src/index.ts:157-165`
 - Create: `cli/tests/install-mcp-entry.test.ts`
+- Create: `cli/tests/custom-db-commands.test.ts`（レビュー修正: deep custom DB の実行経路）
 
 > **なぜ別ファイルに切り出すか**: `cli/src/index.ts` は末尾で `program.parse(process.argv)` を
 > トップレベル実行している。テストから `index.ts` を import すると vitest の argv で
@@ -1648,7 +1651,8 @@ describe("pre-read.sh と core の乖離検知", () => {
 ```
 
 レビュー修正では同じ3件のテスト数を維持したまま、第3テストで DB 不在時の
-無出力 exit 0 と、旧形式 fixture DB に対する警告・ブラスト半径非表示も実行検証する。
+無出力 exit 0、旧形式 fixture DB の警告・ブラスト半径非表示、SQLite 破損時の
+stderr 診断、21件 sentinel に対する表示20件・ファイル重複なしも実行検証する。
 
 `db.ts` に edge kind の一覧が現れない場合は、DDL の直上に次のコメントを追加すること:
 
@@ -1690,10 +1694,22 @@ fi
 PROJECT_ROOT="$(pwd)"
 
 # --- 検疫: schema_version が一致しないグラフは使わない ---
-DB_VERSION="$(sqlite3 "$DB_PATH" "SELECT value FROM meta WHERE key = 'schema_version'" 2>/dev/null || true)"
+if ! META_EXISTS="$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'" 2>&1)"; then
+  echo "[ts-review-graph] グラフ検査に失敗しました: $META_EXISTS" >&2
+  exit 0
+fi
+if [ "$META_EXISTS" != "1" ]; then
+  echo "[ts-review-graph] グラフが旧形式です (schema_version=なし, 期待値 ${SCHEMA_VERSION})"
+  echo "  → build_graph MCP ツールを実行して再構築してください。ブラスト半径は表示しません。"
+  exit 0
+fi
+if ! DB_VERSION="$(sqlite3 "$DB_PATH" "SELECT value FROM meta WHERE key = 'schema_version'" 2>&1)"; then
+  echo "[ts-review-graph] グラフ検査に失敗しました: $DB_VERSION" >&2
+  exit 0
+fi
 if [ "$DB_VERSION" != "$SCHEMA_VERSION" ]; then
   echo "[ts-review-graph] グラフが旧形式です (schema_version=${DB_VERSION:-なし}, 期待値 ${SCHEMA_VERSION})"
-  echo "  → ts-review-graph build を実行して再構築してください。ブラスト半径は表示しません。"
+  echo "  → build_graph MCP ツールを実行して再構築してください。ブラスト半径は表示しません。"
   exit 0
 fi
 
@@ -1710,7 +1726,7 @@ esac
 # シングルクォートを SQL エスケープ（' → ''）してインジェクションを防ぐ
 SAFE_PATH="${REL_PATH//\'/\'\'}"
 
-RESULT=$(sqlite3 "$DB_PATH" "
+if ! RESULT="$(sqlite3 "$DB_PATH" "
   WITH RECURSIVE blast(node_id, depth, reason) AS (
     SELECT id, 0, 'changed' FROM nodes WHERE file = '${SAFE_PATH}'
     UNION ALL
@@ -1718,11 +1734,19 @@ RESULT=$(sqlite3 "$DB_PATH" "
     FROM blast b JOIN edges e ON e.target_id = b.node_id
     WHERE b.depth < 2
       AND e.kind IN ('IMPORTS_FROM', 'TYPED_BY', 'IMPLEMENTS', 'EXTENDS')
+  ),
+  ranked AS (
+    SELECT n.file, b.reason, b.depth,
+      ROW_NUMBER() OVER (PARTITION BY n.file ORDER BY b.depth, b.reason) AS row_num
+    FROM blast b JOIN nodes n ON n.id = b.node_id
   )
-  SELECT DISTINCT n.file, b.reason FROM blast b JOIN nodes n ON n.id = b.node_id
-  ORDER BY b.depth, n.file
+  SELECT file, reason FROM ranked WHERE row_num = 1
+  ORDER BY depth, file
   LIMIT 21
-" 2>/dev/null || true)
+" 2>&1)"; then
+  echo "[ts-review-graph] ブラスト半径の照会に失敗しました: $RESULT" >&2
+  exit 0
+fi
 
 if [ -z "$RESULT" ]; then
   exit 0

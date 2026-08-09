@@ -19,10 +19,22 @@ fi
 PROJECT_ROOT="$(pwd)"
 
 # --- 検疫: schema_version が一致しないグラフは使わない ---
-DB_VERSION="$(sqlite3 "$DB_PATH" "SELECT value FROM meta WHERE key = 'schema_version'" 2>/dev/null || true)"
+if ! META_EXISTS="$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'" 2>&1)"; then
+  echo "[ts-review-graph] グラフ検査に失敗しました: $META_EXISTS" >&2
+  exit 0
+fi
+if [ "$META_EXISTS" != "1" ]; then
+  echo "[ts-review-graph] グラフが旧形式です (schema_version=なし, 期待値 ${SCHEMA_VERSION})"
+  echo "  → build_graph MCP ツールを実行して再構築してください。ブラスト半径は表示しません。"
+  exit 0
+fi
+if ! DB_VERSION="$(sqlite3 "$DB_PATH" "SELECT value FROM meta WHERE key = 'schema_version'" 2>&1)"; then
+  echo "[ts-review-graph] グラフ検査に失敗しました: $DB_VERSION" >&2
+  exit 0
+fi
 if [ "$DB_VERSION" != "$SCHEMA_VERSION" ]; then
   echo "[ts-review-graph] グラフが旧形式です (schema_version=${DB_VERSION:-なし}, 期待値 ${SCHEMA_VERSION})"
-  echo "  → ts-review-graph build を実行して再構築してください。ブラスト半径は表示しません。"
+  echo "  → build_graph MCP ツールを実行して再構築してください。ブラスト半径は表示しません。"
   exit 0
 fi
 
@@ -39,7 +51,7 @@ esac
 # シングルクォートを SQL エスケープ（' → ''）してインジェクションを防ぐ
 SAFE_PATH="${REL_PATH//\'/\'\'}"
 
-RESULT=$(sqlite3 "$DB_PATH" "
+if ! RESULT="$(sqlite3 "$DB_PATH" "
   WITH RECURSIVE blast(node_id, depth, reason) AS (
     SELECT id, 0, 'changed' FROM nodes WHERE file = '${SAFE_PATH}'
     UNION ALL
@@ -47,11 +59,19 @@ RESULT=$(sqlite3 "$DB_PATH" "
     FROM blast b JOIN edges e ON e.target_id = b.node_id
     WHERE b.depth < 2
       AND e.kind IN ('IMPORTS_FROM', 'TYPED_BY', 'IMPLEMENTS', 'EXTENDS')
+  ),
+  ranked AS (
+    SELECT n.file, b.reason, b.depth,
+      ROW_NUMBER() OVER (PARTITION BY n.file ORDER BY b.depth, b.reason) AS row_num
+    FROM blast b JOIN nodes n ON n.id = b.node_id
   )
-  SELECT DISTINCT n.file, b.reason FROM blast b JOIN nodes n ON n.id = b.node_id
-  ORDER BY b.depth, n.file
+  SELECT file, reason FROM ranked WHERE row_num = 1
+  ORDER BY depth, file
   LIMIT 21
-" 2>/dev/null || true)
+" 2>&1)"; then
+  echo "[ts-review-graph] ブラスト半径の照会に失敗しました: $RESULT" >&2
+  exit 0
+fi
 
 if [ -z "$RESULT" ]; then
   exit 0

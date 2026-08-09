@@ -215,6 +215,10 @@ NOT IN GRAPH: src/new-file.ts — グラフ構築後に追加された可能性�
 
 `pre-read.sh` は表示を20件に制限する。21件目を取得して打ち切りを検知し、上限超過時は
 一覧が不完全であると警告して `READ THESE FILES ONLY` / `SKIP all other files` を出さない。
+同一ファイルへ複数 edge kind で到達した場合は、深さが最小の1行へ集約してから件数を
+判定する。SQLite の照会失敗は空結果や旧形式と混同せず stderr に診断を出し、advisory
+hook 自体は exit 0 で継続する。旧形式の復旧案内は custom DB も引き継ぐ `build_graph`
+MCP ツールを指す。
 
 #### フックを Node 化しない判断（実測に基づく）
 

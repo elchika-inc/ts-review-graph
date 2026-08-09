@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { existsSync, rmSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -83,7 +83,7 @@ describe("pre-read.sh と core の乖離検知", () => {
     try {
       const dependentSql = Array.from({ length: 21 }, (_, i) =>
         `INSERT INTO nodes VALUES ('dep${i}.ts::__file__', 'file', 'dep${i}.ts', 'dep${i}.ts', 1, NULL, '[]'); INSERT INTO edges VALUES ('dep${i}.ts::__file__', 'src/a.ts::__file__', 'IMPORTS_FROM');`
-      ).join(" ");
+      ).join(" ") + " INSERT INTO edges VALUES ('dep0.ts::__file__', 'src/a.ts::__file__', 'TYPED_BY');";
       execFileSync("sqlite3", [
         currentDb,
         `CREATE TABLE nodes (id TEXT, kind TEXT, name TEXT, file TEXT, line INTEGER, signature TEXT, type_refs TEXT); CREATE TABLE edges (source_id TEXT, target_id TEXT, kind TEXT); CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '${SCHEMA_VERSION}'); INSERT INTO nodes VALUES ('src/a.ts::__file__', 'file', 'a.ts', 'src/a.ts', 1, NULL, '[]'); ${dependentSql}`,
@@ -96,11 +96,28 @@ describe("pre-read.sh と core の乖離検知", () => {
       expect(output).toContain("TRUNCATED");
       expect(output).not.toContain("READ THESE FILES ONLY");
       expect(output).not.toContain("SKIP all other files");
+      const resultLines = output.split("\n").filter((line) => line.startsWith("  "));
+      expect(resultLines).toHaveLength(20);
+      expect(new Set(resultLines.map((line) => line.trim().split(/\s{2}/)[0])).size).toBe(20);
     } finally {
       for (const suffix of ["", "-wal", "-shm"]) {
         const file = currentDb + suffix;
         if (existsSync(file)) rmSync(file);
       }
+    }
+
+    const corruptDb = path.join(os.tmpdir(), `ts-rg-hook-corrupt-${randomUUID()}.db`);
+    try {
+      writeFileSync(corruptDb, "not a sqlite database");
+      const result = spawnSync("bash", [hookPath], {
+        input,
+        encoding: "utf8",
+        env: { ...process.env, TS_REVIEW_GRAPH_DB: corruptDb },
+      });
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain("グラフ検査に失敗しました");
+    } finally {
+      rmSync(corruptDb, { force: true });
     }
   });
 });
