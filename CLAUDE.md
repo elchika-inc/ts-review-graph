@@ -43,8 +43,9 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 
 **重要**: `nodes.file` と `nodes.id` はプロジェクトルート相対の POSIX パスで保存する。
 絶対パスで保存すると、リポジトリの移動・worktree・別マシンでのクローンでグラフが
-無言で全件ミスする（実障害あり）。相対化は `analyzeProject` / `updateFile` の入口
-1 箇所（`toProjectRelative`）に集約している。
+無言で全件ミスする（実障害あり）。DB へ保存するすべてのファイルパスは共通
+ユーティリティ `toProjectRelative` を通す。`analyzer.ts` ではルート外を除外する
+`toRelativeOrNull` を経由する。
 
 **重要**: `edges.target_id` に意図的に REFERENCES を付けていない。増分更新でファイルを
 削除するとき、`source_id` が削除ファイルのエッジだけを CASCADE で消し、
