@@ -24,7 +24,7 @@ pnpm monorepo。4 パッケージで構成:
 | `packages/plugin` | (配布専用) | Claude Code プラグイン (commands/hooks/skills) |
 | `cli/` | `@elchika-inc/ts-review-graph` | CLI ツール |
 
-依存関係: `mcp-server` → `core`、`cli` → `core`。`plugin` は pure markdown。
+依存関係: `mcp-server` → `core`、`cli` → `core`。`plugin` は Node package/build を持たず、Markdown・`hooks.json`・shell hook scripts で構成する。
 
 ## Key Files
 
