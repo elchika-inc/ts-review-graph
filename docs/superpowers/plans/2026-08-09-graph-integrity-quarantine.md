@@ -1462,7 +1462,7 @@ Task 11 に着手しないこと。
 stdin JSON 方式・環境変数方式のいずれでも出力が得られなかった。
 **現行 Claude Code が PreToolUse フックへ何を渡すかは未確定である。**
 
-- [ ] **Step 1: フックへの入力を丸ごと記録するプローブを書く**
+- [x] **Step 1: フックへの入力を丸ごと記録するプローブを書く**
 
 `/tmp/hook-probe.sh` を作成する（リポジトリには置かない）:
 
@@ -1485,7 +1485,7 @@ exit 0
 chmod +x /tmp/hook-probe.sh
 ```
 
-- [ ] **Step 2: プローブを PreToolUse(Read) に登録する**
+- [x] **Step 2: プローブを PreToolUse(Read) に登録する**
 
 作業中の worktree の `.claude/settings.local.json` に追加する
 （グローバル設定は変更しないこと）:
@@ -1503,7 +1503,7 @@ chmod +x /tmp/hook-probe.sh
 }
 ```
 
-- [ ] **Step 3: 実測する（フックはセッション開始時に読み込まれる点に注意）**
+- [x] **Step 3: 実測する（フックはセッション開始時に読み込まれる点に注意）**
 
 **重要**: Claude Code はフック設定を**セッション開始時に読み込む**。
 実行中のセッションで `.claude/settings.local.json` を書き換えても、
@@ -1524,7 +1524,7 @@ Expected: argv / `CLAUDE_*` 環境変数 / stdin のいずれかにファイル�
 それでも空なら**ここで止めて報告すること**（Task 11 は実行しない）。
 「フックの仕組みが使えない」という結論自体が重要な調査結果である。
 
-- [ ] **Step 4: 実測結果を記録する**
+- [x] **Step 4: 実測結果を記録する**
 
 `packages/plugin/hooks/scripts/README.md` を作成し、以下を記載する:
 
@@ -1534,12 +1534,12 @@ Expected: argv / `CLAUDE_*` 環境変数 / stdin のいずれかにファイル�
 - ファイルパスを取り出すための正確な式
 - `/tmp/hook-probe.log` の該当部分の引用
 
-- [ ] **Step 5: プローブを撤収する**
+- [x] **Step 5: プローブを撤収する**
 
 `.claude/settings.local.json` から追加した `hooks` セクションを削除し、
 `/tmp/hook-probe.sh` と `/tmp/hook-probe.log` を削除する。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add packages/plugin/hooks/scripts/README.md
