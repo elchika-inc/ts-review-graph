@@ -24,7 +24,7 @@ pnpm monorepo。4 パッケージで構成:
 | `packages/plugin` | (配布専用) | Claude Code プラグイン (commands/hooks/skills) |
 | `cli/` | `@elchika-inc/ts-review-graph` | CLI ツール |
 
-依存関係: `mcp-server` → `core`、`cli` → `core`。`plugin` は pure markdown。
+依存関係: `mcp-server` → `core`、`cli` → `core`。`plugin` は Node package/build を持たず、Markdown・`hooks.json`・shell hook scripts で構成する。
 
 ## Key Files
 
@@ -37,12 +37,23 @@ pnpm monorepo。4 パッケージで構成:
 
 ## Database Schema
 
-SQLite 3 テーブル: `nodes`、`edges`、`file_hashes`
+SQLite 4 テーブル: `nodes`、`edges`、`file_hashes`、`meta`
 
 Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 
-**重要**: `edges.target_id` に意図的に REFERENCES を付けていない。増分更新でファイルを削除するとき、
-`source_id` が削除ファイルのエッジだけを CASCADE で消し、逆方向 (`B→A`) エッジは残す必要があるため。
+**重要**: `nodes.file` と `nodes.id` はプロジェクトルート相対の POSIX パスで保存する。
+絶対パスで保存すると、リポジトリの移動・worktree・別マシンでのクローンでグラフが
+無言で全件ミスする（実障害あり）。DB へ保存するすべてのファイルパスは共通
+ユーティリティ `toProjectRelative` を通す。`analyzer.ts` ではルート外を除外する
+`toRelativeOrNull` を経由する。
+
+**重要**: `edges.target_id` に意図的に REFERENCES を付けていない。増分更新でファイルを
+削除するとき、`source_id` が削除ファイルのエッジだけを CASCADE で消し、
+逆方向 (`B→A`) エッジは残す必要があるため。
+
+**重要**: `meta` テーブルはグラフの構築条件（`schema_version` / `tsconfigs` /
+`built_at` / `built_root`）を記録する。`checkGraphHealth()` がこれを使って検疫する。
+`meta` 不在の DB は旧形式として fail-closed で拒否される。
 
 ## Gotchas
 
@@ -60,5 +71,5 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 
 ## Testing
 
-`packages/core` と `packages/mcp-server` に vitest テスト。`cli` は `--passWithNoTests`。
-テスト追加時は `packages/mcp-server/tests/` にインテグレーションテストを配置する。
+各パッケージに vitest テストがある。テスト追加時は対象パッケージの `tests/` に配置する。
+MCP のインテグレーションテストは `packages/mcp-server/tests/` に配置する。

@@ -83,7 +83,7 @@ SKIP: 1170 other files — not in blast radius
 
 | Command | Description |
 |---|---|
-| `npx @elchika-inc/ts-review-graph@latest install --tsconfig <path>` | Setup + initial build + register MCP + append `CLAUDE.md` |
+| `npx @elchika-inc/ts-review-graph@latest install --tsconfig <path> [--db <path>]` | Setup + initial build + register MCP + append `CLAUDE.md` |
 | `npx @elchika-inc/ts-review-graph build [--tsconfig <path>]... [--db <path>]` | Rebuild the graph |
 | `npx @elchika-inc/ts-review-graph update <file> [--db <path>]` | Incremental update for a single file |
 | `npx @elchika-inc/ts-review-graph status [--db <path>]` | Show graph statistics |
@@ -101,6 +101,24 @@ SKIP: 1170 other files — not in blast radius
 | `find_cycles` | `max_cycles` (default: `20`) | File-level circular imports |
 | `build_graph` | `tsconfigs[]` (optional) | Rebuild the graph |
 | `graph_status` | — | Graph statistics |
+
+### Graph health checks
+
+The six graph-query tools (`get_minimal_context`, `get_impact`, `get_type_usages`,
+`get_test_coverage`, `query_graph`, and `find_cycles`) validate the graph before answering:
+
+| Condition | Behavior |
+|---|---|
+| `meta` table missing, or `schema_version` mismatch | **Refuses** — rebuild required |
+| `config.json` tsconfigs differ from the recorded set (or `config.json` missing) | **Refuses** — rebuild required |
+| Known files whose disk mtime is newer than their last full or incremental graph update, or which are missing from disk | Answers, prefixed with `⚠ STALE: N files changed` |
+
+`ts-review-graph status` reports the same verdict on a `health:` line.
+MCP `graph_status` remains quarantine-exempt so it can report raw diagnostics for a broken graph.
+
+Graph paths are stored relative to the project root, so a `graph.db` moved or copied
+with its working tree remains usable at the new root. Because `graph.db` is ignored,
+a normal clone or newly created worktree does not contain it and requires `install` or `build`.
 
 ### BFS depth by mode
 
@@ -125,6 +143,8 @@ SKIP: 1170 other files — not in blast radius
 ```
 
 `graph.db` is a build artifact — added to `.gitignore` automatically. Share `config.json` with your team.
+Run CLI and MCP commands from the project root. `--db` changes only the database location;
+it does not change which directory is treated as the project root.
 
 ## How it works
 

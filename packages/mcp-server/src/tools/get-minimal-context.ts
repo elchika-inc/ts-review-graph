@@ -74,6 +74,9 @@ export function getMinimalContext(
   }
   const maxDepth = DEPTH_FOR_MODE(mode);
 
+  const known = db.prepare("SELECT 1 FROM file_hashes WHERE file = ?");
+  const notInGraph = changedFiles.filter((f) => known.get(f) === undefined);
+
   // changedFiles の高速ルックアップ用 Set
   const changedSet = new Set(changedFiles);
   const reverseFiles = new Map<string, string>();
@@ -169,6 +172,15 @@ export function getMinimalContext(
       lines.push(`  ... (${totalReverse - MAX_CONTEXT_FILES} more — narrow changed_files or use review mode)`);
     }
     lines.push(``, `SKIP: ${Math.max(0, totalFiles - reverseFiles.size)} other files — not in blast radius`);
+  }
+
+  if (notInGraph.length > 0) {
+    lines.unshift(
+      ...notInGraph.map(
+        (f) => `NOT IN GRAPH: ${f} — グラフ構築後に追加された可能性があります`
+      ),
+      ""
+    );
   }
 
   return { content: [{ type: "text", text: lines.join("\n") }] };

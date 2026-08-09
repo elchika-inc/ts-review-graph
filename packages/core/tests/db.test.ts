@@ -27,6 +27,7 @@ describe("openDb", () => {
       expect(tables).toContain("nodes");
       expect(tables).toContain("edges");
       expect(tables).toContain("file_hashes");
+      expect(tables).toContain("meta");
     } finally {
       db.close();
     }

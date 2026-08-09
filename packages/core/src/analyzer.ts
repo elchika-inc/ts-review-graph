@@ -1,5 +1,7 @@
 import { Project, SourceFile } from "ts-morph";
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { toProjectRelative } from "./paths.js";
 
 export type NodeKind =
   | "file"
@@ -49,7 +51,7 @@ function isTestFile(file: string): boolean {
   return /\.(test|spec)\.(ts|tsx)$/.test(file);
 }
 
-export function analyzeProject(tsconfigPath: string): AnalysisResult {
+export function analyzeProject(tsconfigPath: string, projectRoot: string): AnalysisResult {
   const project = new Project({ tsConfigFilePath: tsconfigPath });
   const nodes: GraphNode[] = [];
   const edges: GraphEdge[] = [];
@@ -65,8 +67,11 @@ export function analyzeProject(tsconfigPath: string): AnalysisResult {
   }
 
   for (const sf of project.getSourceFiles()) {
-    const filePath = sf.getFilePath();
-    if (filePath.includes("node_modules")) continue;
+    const absPath = sf.getFilePath();
+    if (absPath.includes("node_modules")) continue;
+    // プロジェクトルート外のファイル（tsconfig の references 等で入り込む）はグラフに含めない
+    const filePath = toRelativeOrNull(projectRoot, absPath);
+    if (filePath === null) continue;
 
     const hash = createHash("sha256")
       .update(sf.getFullText())
@@ -87,9 +92,11 @@ export function analyzeProject(tsconfigPath: string): AnalysisResult {
     for (const decl of sf.getImportDeclarations()) {
       const resolved = decl.getModuleSpecifierSourceFile();
       if (resolved) {
+        const targetFile = toRelativeOrNull(projectRoot, resolved.getFilePath());
+        if (targetFile === null) continue;
         addEdge({
           sourceId: fileId(filePath),
-          targetId: fileId(resolved.getFilePath()),
+          targetId: fileId(targetFile),
           kind: "IMPORTS_FROM",
         });
       }
@@ -99,27 +106,33 @@ export function analyzeProject(tsconfigPath: string): AnalysisResult {
     for (const decl of sf.getExportDeclarations()) {
       const resolved = decl.getModuleSpecifierSourceFile();
       if (resolved) {
+        const targetFile = toRelativeOrNull(projectRoot, resolved.getFilePath());
+        if (targetFile === null) continue;
         addEdge({
           sourceId: fileId(filePath),
-          targetId: fileId(resolved.getFilePath()),
+          targetId: fileId(targetFile),
           kind: "IMPORTS_FROM",
         });
       }
     }
 
     // 関数・クラス・インターフェース・型エイリアスのノードとエッジ
-    extractDeclarations(sf, filePath, nodes, addEdge);
+    extractDeclarations(sf, filePath, projectRoot, nodes, addEdge);
   }
 
   // HAS_TEST エッジ: テストファイルが import する実装ファイルに紐付け
   for (const sf of project.getSourceFiles()) {
-    const filePath = sf.getFilePath();
-    if (!isTestFile(filePath) || filePath.includes("node_modules")) continue;
+    const absPath = sf.getFilePath();
+    if (!isTestFile(absPath) || absPath.includes("node_modules")) continue;
+    const filePath = toRelativeOrNull(projectRoot, absPath);
+    if (filePath === null) continue;
     for (const decl of sf.getImportDeclarations()) {
       const resolved = decl.getModuleSpecifierSourceFile();
       if (resolved && !isTestFile(resolved.getFilePath()) && !resolved.getFilePath().includes("node_modules")) {
+        const targetFile = toRelativeOrNull(projectRoot, resolved.getFilePath());
+        if (targetFile === null) continue;
         addEdge({
-          sourceId: fileId(resolved.getFilePath()),
+          sourceId: fileId(targetFile),
           targetId: fileId(filePath),
           kind: "HAS_TEST",
         });
@@ -130,9 +143,28 @@ export function analyzeProject(tsconfigPath: string): AnalysisResult {
   return { nodes, edges, fileHashes };
 }
 
+function toRelativeOrNull(projectRoot: string, filePath: string): string | null {
+  let relative: string;
+  try {
+    relative = toProjectRelative(projectRoot, filePath);
+  } catch {
+    return null;
+  }
+
+  const realRoot = realpathSync(projectRoot);
+  const realFile = realpathSync(filePath);
+  try {
+    toProjectRelative(realRoot, realFile);
+  } catch {
+    return null;
+  }
+  return relative;
+}
+
 function extractDeclarations(
   sf: SourceFile,
   filePath: string,
+  projectRoot: string,
   nodes: GraphNode[],
   addEdge: (e: GraphEdge) => void
 ): void {
@@ -147,8 +179,9 @@ function extractDeclarations(
       const sym = param.getType().getSymbol();
       if (sym) {
         for (const d of sym.getDeclarations()) {
-          const targetFile = d.getSourceFile().getFilePath();
-          if (targetFile !== filePath && !targetFile.includes("node_modules")) {
+          const targetAbsPath = d.getSourceFile().getFilePath();
+          const targetFile = toRelativeOrNull(projectRoot, targetAbsPath);
+          if (targetFile !== null && targetFile !== filePath && !targetAbsPath.includes("node_modules")) {
             const targetId = nodeId(targetFile, sym.getName());
             addEdge({ sourceId: id, targetId, kind: "TYPED_BY" });
             typeRefs.push(targetId);
@@ -177,8 +210,9 @@ function extractDeclarations(
       const sym = impl.getType().getSymbol();
       if (sym) {
         for (const d of sym.getDeclarations()) {
-          const targetFile = d.getSourceFile().getFilePath();
-          if (!targetFile.includes("node_modules")) {
+          const targetAbsPath = d.getSourceFile().getFilePath();
+          const targetFile = toRelativeOrNull(projectRoot, targetAbsPath);
+          if (targetFile !== null && !targetAbsPath.includes("node_modules")) {
             addEdge({
               sourceId: id,
               targetId: nodeId(targetFile, sym.getName()),
@@ -193,11 +227,14 @@ function extractDeclarations(
     if (baseClass) {
       const baseName = baseClass.getName();
       if (baseName) {
-        addEdge({
-          sourceId: id,
-          targetId: nodeId(baseClass.getSourceFile().getFilePath(), baseName),
-          kind: "EXTENDS",
-        });
+        const targetFile = toRelativeOrNull(projectRoot, baseClass.getSourceFile().getFilePath());
+        if (targetFile !== null) {
+          addEdge({
+            sourceId: id,
+            targetId: nodeId(targetFile, baseName),
+            kind: "EXTENDS",
+          });
+        }
       }
     }
 
@@ -207,8 +244,9 @@ function extractDeclarations(
         const sym = param.getType().getSymbol();
         if (sym) {
           for (const d of sym.getDeclarations()) {
-            const targetFile = d.getSourceFile().getFilePath();
-            if (targetFile !== filePath && !targetFile.includes("node_modules")) {
+            const targetAbsPath = d.getSourceFile().getFilePath();
+            const targetFile = toRelativeOrNull(projectRoot, targetAbsPath);
+            if (targetFile !== null && targetFile !== filePath && !targetAbsPath.includes("node_modules")) {
               addEdge({
                 sourceId: id,
                 targetId: nodeId(targetFile, sym.getName()),
@@ -240,8 +278,9 @@ function extractDeclarations(
       const sym = ext.getType().getSymbol();
       if (sym) {
         for (const d of sym.getDeclarations()) {
-          const targetFile = d.getSourceFile().getFilePath();
-          if (!targetFile.includes("node_modules")) {
+          const targetAbsPath = d.getSourceFile().getFilePath();
+          const targetFile = toRelativeOrNull(projectRoot, targetAbsPath);
+          if (targetFile !== null && !targetAbsPath.includes("node_modules")) {
             addEdge({
               sourceId: id,
               targetId: nodeId(targetFile, sym.getName()),

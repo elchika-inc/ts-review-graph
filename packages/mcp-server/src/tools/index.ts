@@ -1,3 +1,4 @@
+import { checkGraphHealth } from "@elchika-inc/ts-review-graph-core";
 import type { Db } from "@elchika-inc/ts-review-graph-core";
 import { getMinimalContext } from "./get-minimal-context.js";
 import { getImpact } from "./get-impact.js";
@@ -8,6 +9,13 @@ import { buildGraph } from "./build-graph.js";
 import { graphStatus } from "./graph-status.js";
 import { findCycles } from "./find-cycles.js";
 import type { ToolResult } from "./types.js";
+
+function getProjectRoot(): string {
+  return process.cwd();
+}
+
+// 検疫の対象外 — build_graph は復旧手段そのもの、graph_status は診断表示のため
+const QUARANTINE_EXEMPT = new Set(["build_graph", "graph_status"]);
 
 export const TOOL_DEFINITIONS = [
   {
@@ -179,6 +187,52 @@ export function registerTools(
     };
   }
 
+  let staleNotice: string | null = null;
+
+  if (db && !QUARANTINE_EXEMPT.has(toolName)) {
+    let health: ReturnType<typeof checkGraphHealth>;
+    try {
+      health = checkGraphHealth(db, getProjectRoot());
+    } catch (err) {
+      return {
+        content: [{
+          type: "text",
+          text: `✗ GRAPH HEALTH CHECK FAILED — 結果を返しません (${err instanceof Error ? err.message : String(err)})`,
+        }],
+        isError: true,
+      };
+    }
+    if (health.status === "mismatch") {
+      return {
+        content: [{
+          type: "text",
+          text: [
+            `✗ GRAPH MISMATCH — 結果を返しません (${health.reason})`,
+            `  ${health.detail}`,
+            "  → build_graph ツールを実行してグラフを再構築してください。",
+          ].join("\n"),
+        }],
+        isError: true,
+      };
+    }
+    if (health.status === "drift") {
+      staleNotice = `⚠ STALE: ${health.staleFiles} files changed since graph build (${health.totalFiles} total)`;
+    }
+  }
+
+  const result = dispatch(db, toolName, args);
+
+  if (staleNotice && result.isError !== true && result.content[0]?.type === "text") {
+    result.content[0].text = `${staleNotice}\n\n${result.content[0].text}`;
+  }
+  return result;
+}
+
+function dispatch(
+  db: Db | null,
+  toolName: string,
+  args: Record<string, unknown>
+): ToolResult {
   switch (toolName) {
     case "get_minimal_context":
       return getMinimalContext(db!, args);

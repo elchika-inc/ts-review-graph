@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { openDb, buildFullGraph, updateFile } from "@elchika-inc/ts-review-graph-core";
+import { checkGraphHealth, openDb, buildFullGraph, updateFile, toProjectRelative } from "@elchika-inc/ts-review-graph-core";
 import {
   mkdirSync,
   existsSync,
@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildMcpServerEntry } from "./mcp-entry.js";
 
 const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
 const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
@@ -33,6 +34,7 @@ function readConfig(projectRoot: string): TsReviewGraphConfig | null {
 
 function writeConfig(projectRoot: string, config: TsReviewGraphConfig): void {
   const configPath = path.join(projectRoot, CONFIG_FILE_NAME);
+  mkdirSync(path.dirname(configPath), { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
 }
 
@@ -49,10 +51,11 @@ program
     (val: string, prev: string[]) => [...prev, val],
     [] as string[]
   )
-  .action((opts: { tsconfig: string[] }) => {
+  .option("--db <path>", "graph.db のパス")
+  .action((opts: { tsconfig: string[]; db?: string }) => {
     const projectRoot = process.cwd();
     const graphDir = path.join(projectRoot, ".ts-review-graph");
-    const dbPath = path.join(graphDir, "graph.db");
+    const dbPath = opts.db ? path.resolve(opts.db) : path.join(graphDir, "graph.db");
 
     // 1. ディレクトリ作成
     if (!existsSync(graphDir)) mkdirSync(graphDir, { recursive: true });
@@ -118,7 +121,7 @@ program
     }
 
     // 5. config.json 書き込み — 存在するパスのみを記録する
-    const relPaths = existingPaths.map((p) => path.relative(projectRoot, p));
+    const relPaths = existingPaths.map((p) => toProjectRelative(projectRoot, p));
     try {
       writeConfig(projectRoot, { tsconfigs: relPaths });
     } catch (err) {
@@ -137,7 +140,7 @@ program
       process.exit(1);
     }
     try {
-      buildFullGraph(db!, existingPaths);
+      buildFullGraph(db!, existingPaths, projectRoot);
     } catch (err) {
       console.error("⚠ グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
       db?.close();
@@ -155,11 +158,7 @@ program
     }
 
     // 7. MCP サーバーを .mcp.json に登録 — グラフ構築成功後のみ実行
-    const serverEntry = {
-      command: "npx",
-      args: ["-y", "@elchika-inc/ts-review-graph-mcp-server"],
-      env: { TS_REVIEW_GRAPH_DB: dbPath },
-    };
+    const serverEntry = buildMcpServerEntry(projectRoot, dbPath);
     const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
     mcpServers["ts-review-graph"] = serverEntry;
     mcpJson["mcpServers"] = mcpServers;
@@ -230,9 +229,9 @@ program
   )
   .option("--db <path>", "graph.db のパス")
   .action((opts: { tsconfig: string[]; db?: string }) => {
-    const projectRoot = process.cwd();
     const dbPath =
-      opts.db ?? path.join(projectRoot, ".ts-review-graph/graph.db");
+      opts.db ? path.resolve(opts.db) : path.join(process.cwd(), ".ts-review-graph/graph.db");
+    const projectRoot = process.cwd();
 
     let tsconfigPaths: string[];
 
@@ -269,7 +268,10 @@ program
     }
     try {
       const startMs = Date.now();
-      buildFullGraph(db!, existingPaths);
+      buildFullGraph(db!, existingPaths, projectRoot);
+      writeConfig(projectRoot, {
+        tsconfigs: existingPaths.map((p) => toProjectRelative(projectRoot, p)),
+      });
       const elapsed = Date.now() - startMs;
       console.log(`グラフ構築完了 (${elapsed}ms)`);
       try {
@@ -298,8 +300,10 @@ program
   .option("--db <path>", "graph.db のパス")
   .action((file: string, opts) => {
     const dbPath =
-      (opts.db as string | undefined) ??
-      path.join(process.cwd(), ".ts-review-graph/graph.db");
+      typeof opts.db === "string"
+        ? path.resolve(opts.db)
+        : path.join(process.cwd(), ".ts-review-graph/graph.db");
+    const projectRoot = process.cwd();
 
     if (!existsSync(dbPath)) {
       console.error(
@@ -322,7 +326,7 @@ program
       process.exit(1);
     }
     try {
-      const result = updateFile(db!, resolvedFile);
+      const result = updateFile(db!, resolvedFile, projectRoot);
       if (result === "skipped") {
         console.log(`スキップ（変更なし）: ${file}`);
       } else if (result === "deleted") {
@@ -345,8 +349,10 @@ program
   .option("--db <path>", "graph.db のパス")
   .action((opts) => {
     const dbPath =
-      (opts.db as string | undefined) ??
-      path.join(process.cwd(), ".ts-review-graph/graph.db");
+      typeof opts.db === "string"
+        ? path.resolve(opts.db)
+        : path.join(process.cwd(), ".ts-review-graph/graph.db");
+    const projectRoot = process.cwd();
 
     if (!existsSync(dbPath)) {
       console.error(
@@ -375,6 +381,13 @@ program
       const latest = db!
         .prepare("SELECT MAX(updated_at) as t FROM file_hashes")
         .get() as { t: number | null };
+      const health = checkGraphHealth(db!, projectRoot);
+      const healthText =
+        health.status === "ok"
+          ? "OK"
+          : health.status === "mismatch"
+            ? `MISMATCH (${health.reason}) — ${health.detail}`
+            : `STALE (${health.staleFiles}/${health.totalFiles} files changed)`;
 
       console.log("ts-review-graph status:");
       console.log(`  nodes:      ${nodeCount}`);
@@ -383,6 +396,7 @@ program
       console.log(
         `  updated_at: ${latest.t ? new Date(latest.t).toISOString() : "未構築"}`
       );
+      console.log(`  health:     ${healthText}`);
     } catch (err) {
       console.error("ステータス取得に失敗しました:", err instanceof Error ? err.message : err);
       process.exit(1);

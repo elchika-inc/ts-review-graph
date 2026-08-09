@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 
 CREATE TABLE IF NOT EXISTS edges (
+  -- edges.kind の取りうる値: IMPORTS_FROM | TYPED_BY | IMPLEMENTS | EXTENDS | HAS_TEST
   source_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   -- target_id には意図的に REFERENCES を付けない。
   -- 増分更新でファイルAのノードを削除するとき、source が A であるエッジだけを
@@ -31,6 +32,11 @@ CREATE TABLE IF NOT EXISTS file_hashes (
   file       TEXT PRIMARY KEY,
   hash       TEXT NOT NULL,
   updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id, kind);

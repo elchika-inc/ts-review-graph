@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { resolve as resolvePath, dirname } from "node:path";
 import { Project } from "ts-morph";
 import type { Db } from "./db.js";
 import { analyzeProject } from "./analyzer.js";
+import { toProjectRelative, toProjectAbsolute } from "./paths.js";
+import { writeMeta, SCHEMA_VERSION } from "./meta.js";
 
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
@@ -66,39 +68,55 @@ function getStoredHash(db: Db, file: string): string | undefined {
   return row?.hash;
 }
 
-export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "deleted" {
-  if (!existsSync(filePath)) {
+export function updateFile(db: Db, filePath: string, projectRoot: string): "skipped" | "updated" | "deleted" {
+  const absPath = toProjectAbsolute(projectRoot, filePath);
+  const relPath = toProjectRelative(projectRoot, filePath);
+
+  if (!existsSync(absPath)) {
     const stmts = getUpdateStmts(db);
     db.transaction(() => {
-      stmts.deleteNodes.run(filePath);
-      stmts.deleteHash.run(filePath);
+      stmts.deleteNodes.run(relPath);
+      stmts.deleteHash.run(relPath);
     })();
     return "deleted";
   }
 
-  const content = readFileSync(filePath, "utf-8");
-  const newHash = sha256(content);
-  const oldHash = getStoredHash(db, filePath);
+  // ルート内の symlink から外部ファイルを読む経路を拒否する。
+  // projectRoot 自体が symlink の場合もあるため、両方を実体パスへ解決して比較する。
+  toProjectRelative(realpathSync(projectRoot), realpathSync(absPath));
 
-  if (oldHash === newHash) return "skipped";
+  // 読み取り・解析中の変更を health が検出できるよう、観測開始時刻を保存する。
+  const observedAt = Date.now();
+  const content = readFileSync(absPath, "utf-8");
+  const newHash = sha256(content);
+  const oldHash = getStoredHash(db, relPath);
+
+  if (oldHash === newHash) {
+    getUpdateStmts(db).upsertHash.run({
+      file: relPath,
+      hash: newHash,
+      updatedAt: observedAt,
+    });
+    return "skipped";
+  }
 
   // ts-morph 解析はトランザクション外（純粋な計算、DBアクセスなし）
   const project = new Project({ skipAddingFilesFromTsConfig: true });
-  const sf = project.addSourceFileAtPath(filePath);
+  const sf = project.addSourceFileAtPath(absPath);
 
   const { insertNode, insertEdge, deleteNodes: deleteNodesByFile, selectNodeExists, upsertHash } = getUpdateStmts(db);
 
   const run = db.transaction(() => {
     // 古いノードを削除（ON DELETE CASCADE がエッジも消す）
-    deleteNodesByFile.run(filePath);
+    deleteNodesByFile.run(relPath);
 
     // ファイルノード
-    const fileNodeId = `${filePath}::__file__`;
+    const fileNodeId = `${relPath}::__file__`;
     insertNode.run({
       id: fileNodeId,
       kind: "file",
-      name: filePath.split("/").pop() ?? filePath,
-      file: filePath,
+      name: relPath.split("/").pop() ?? relPath,
+      file: relPath,
       line: 1,
       signature: null,
       typeRefs: "[]",
@@ -109,10 +127,10 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
       const name = fn.getName();
       if (!name) continue;
       insertNode.run({
-        id: `${filePath}::${name}`,
+        id: `${relPath}::${name}`,
         kind: "function",
         name,
-        file: filePath,
+        file: relPath,
         line: fn.getStartLineNumber(),
         signature: null,
         typeRefs: "[]",
@@ -124,10 +142,10 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
       const name = cls.getName();
       if (!name) continue;
       insertNode.run({
-        id: `${filePath}::${name}`,
+        id: `${relPath}::${name}`,
         kind: "class",
         name,
-        file: filePath,
+        file: relPath,
         line: cls.getStartLineNumber(),
         signature: null,
         typeRefs: "[]",
@@ -137,10 +155,10 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
     // インターフェースノード
     for (const iface of sf.getInterfaces()) {
       insertNode.run({
-        id: `${filePath}::${iface.getName()}`,
+        id: `${relPath}::${iface.getName()}`,
         kind: "interface",
         name: iface.getName(),
-        file: filePath,
+        file: relPath,
         line: iface.getStartLineNumber(),
         signature: null,
         typeRefs: "[]",
@@ -154,10 +172,10 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
         const name = decl.getName();
         if (!name) continue;
         insertNode.run({
-          id: `${filePath}::${name}`,
+          id: `${relPath}::${name}`,
           kind: "variable",
           name,
-          file: filePath,
+          file: relPath,
           line: decl.getStartLineNumber(),
           signature: null,
           typeRefs: "[]",
@@ -179,7 +197,7 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
       // 相対パスのみ解決（npm パッケージは除外）
       if (!moduleSpec.startsWith(".")) continue;
 
-      const base = resolvePath(dirname(filePath), moduleSpec);
+      const base = resolvePath(dirname(absPath), moduleSpec);
       // ESM imports use .js extension but the file on disk is .ts
       const tsBase = base.endsWith(".js") ? base.slice(0, -3) : base;
       const candidates = [
@@ -192,7 +210,13 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
 
       for (const candidate of candidates) {
         // 対象ノードが DB に存在すれば IMPORTS_FROM エッジを挿入
-        const targetNodeId = `${candidate}::__file__`;
+        let targetNodeId: string;
+        try {
+          targetNodeId = `${toProjectRelative(projectRoot, candidate)}::__file__`;
+        } catch {
+          // フル build と同様、プロジェクトルート外の依存はグラフへ含めない。
+          continue;
+        }
         const exists = selectNodeExists.get(targetNodeId);
         if (exists) {
           insertEdge.run({
@@ -207,9 +231,9 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
 
     // ハッシュ UPSERT
     upsertHash.run({
-      file: filePath,
+      file: relPath,
       hash: newHash,
-      updatedAt: Date.now(),
+      updatedAt: observedAt,
     });
   });
 
@@ -218,14 +242,14 @@ export function updateFile(db: Db, filePath: string): "skipped" | "updated" | "d
   return "updated";
 }
 
-export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
+export function buildFullGraph(db: Db, tsconfigPaths: string[], projectRoot: string): void {
   const { insertNode, insertEdge, upsertHash, deleteAllEdges, deleteAllNodes, deleteAllHashes } = getUpdateStmts(db);
 
   const now = Date.now();
 
   // analyzeProject はトランザクション外で実行（TS Compiler API は純粋な計算、DB アクセスなし）
   // 全 tsconfig の解析が終わってから一括 INSERT することで書き込みロック時間を最小化する
-  const allResults = tsconfigPaths.map((p) => analyzeProject(p));
+  const allResults = tsconfigPaths.map((p) => analyzeProject(p, projectRoot));
 
   const runAll = db.transaction(() => {
     deleteAllEdges.run();
@@ -259,6 +283,12 @@ export function buildFullGraph(db: Db, tsconfigPaths: string[]): void {
         upsertHash.run({ file, hash, updatedAt: now });
       }
     }
+    writeMeta(db, {
+      schemaVersion: SCHEMA_VERSION,
+      tsconfigs: tsconfigPaths.map((p) => toProjectRelative(projectRoot, p)),
+      builtAt: now,
+      builtRoot: resolvePath(projectRoot),
+    });
   });
 
   runAll();
