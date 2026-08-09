@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - npx cache 内のネイティブ module が Node ABI 不一致で失敗した場合、エラーから抽出できた `_npx/<hash>` の削除コマンドを表示し、抽出不能時は一般的な cache 削除案内に留めるようにした
 
 ### Changed
-- MCP server の修正版は自動受信されなくなった。version を更新するには、利用する CLI version で `install` を再実行する必要がある
+- MCP server の修正版は自動受信されなくなった。version を更新するには、更新後の CLI version で初回と同じ `--tsconfig` / `--db` option を指定し、`install` を再実行する必要がある
 
 ## [0.5.0] - 2026-08-09
 
