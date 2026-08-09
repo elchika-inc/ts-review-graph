@@ -2,9 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **実行記録:** 本計画は実行・レビュー済みである。以下のチェック済み手順とコード例は初期実装の監査記録であり、再実行・転記しないこと。レビューサイクルで確定した最終実装の正本は現行ソースとテストであり、特に次の invariant を保持する。
+> - DB へ保存するすべてのファイルパスは `toProjectRelative` を通し、`analyzer.ts` は `toRelativeOrNull` と実体パス検査でルート外・外部 symlink を除外する。
+> - `updateFile` は実体パス境界を検査し、処理開始時の `observedAt` を `file_hashes.updated_at` に記録して処理中の変更を次回検疫で検出する。
+> - `checkGraphHealth` は `ENOENT` / `ENOTDIR` のみ drift として数え、それ以外のファイル検査エラーは検証不能として投げる。MCP の照会ツールはその例外を fail-closed で拒否する。
+> - これらのレビュー修正は `bdacb0f`、`bfa0869`、`a6155c5`、`e248d99` に記録されている。
+
 **Goal:** グラフ DB を可搬にし、壊れたグラフが「影響なし」と嘘をつけないようにする。
 
-**Architecture:** ファイルパスの絶対 → プロジェクトルート相対への変換を `analyzeProject` / `updateFile` の入口 1 箇所に集約する（`nodes.id` は `file` から導出されるため、入口で相対化すれば id も自動的に相対になる）。構築条件を `meta` テーブルへ記録し、`checkGraphHealth()` 1 関数が CLI と MCP の両経路から呼ばれる。フックは起動コストの実測結果により bash + sqlite3 のまま据え置き、SQL で `schema_version` のみ検査する。
+**Architecture:** ファイルパスの絶対 → プロジェクトルート相対への変換を共通ユーティリティへ集約し、DB へ保存する各境界から呼ぶ（`nodes.id` は相対化済みの `file` から導出する）。構築条件を `meta` テーブルへ記録し、`checkGraphHealth()` 1 関数が CLI と MCP の両経路から呼ばれる。フックは起動コストの実測結果により bash + sqlite3 のまま据え置き、SQL で `schema_version` のみ検査する。
 
 **Tech Stack:** TypeScript (ESM) / better-sqlite3 / ts-morph / vitest / pnpm workspace
 
