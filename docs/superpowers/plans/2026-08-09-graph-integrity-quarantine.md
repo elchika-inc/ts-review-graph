@@ -643,7 +643,7 @@ git commit -m "feat(core)!: updateFile/buildFullGraph を相対パス化し meta
    または `statSync` が ENOENT → `staleFiles` に加算。1 件以上なら `drift`
 4. それ以外 → `ok`
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/core/tests/health.test.ts`:
 
@@ -756,12 +756,12 @@ describe("checkGraphHealth", () => {
 });
 ```
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/core && npx vitest run tests/health.test.ts`
 Expected: FAIL — `Failed to resolve import "../src/health.js"`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/core/src/health.ts`:
 
@@ -857,12 +857,12 @@ export function checkGraphHealth(db: Db, projectRoot: string): GraphHealth {
 }
 ```
 
-- [ ] **Step 4: テストを実行して成功を確認する**
+- [x] **Step 4: テストを実行して成功を確認する**
 
 Run: `cd packages/core && npx vitest run tests/health.test.ts`
 Expected: PASS（7 件）
 
-- [ ] **Step 5: エクスポートを追加する**
+- [x] **Step 5: エクスポートを追加する**
 
 `packages/core/src/index.ts` に追記:
 
@@ -871,7 +871,7 @@ export { checkGraphHealth } from "./health.js";
 export type { GraphHealth } from "./health.js";
 ```
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add packages/core/src/health.ts packages/core/tests/health.test.ts packages/core/src/index.ts

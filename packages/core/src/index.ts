@@ -8,3 +8,5 @@ export { updateFile, buildFullGraph } from "./updater.js";
 export { toProjectRelative, toProjectAbsolute } from "./paths.js";
 export { writeMeta, readMeta, SCHEMA_VERSION } from "./meta.js";
 export type { GraphMeta } from "./meta.js";
+export { checkGraphHealth } from "./health.js";
+export type { GraphHealth } from "./health.js";
