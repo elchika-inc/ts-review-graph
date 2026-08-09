@@ -64,6 +64,15 @@ was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`
     ]);
   });
 
+  it("空白を含む unquoted path の途中から削除対象を抽出しない", () => {
+    const message = "NODE_MODULE_VERSION /Users/test user/.npm/_npx/08af52269914770e/node_modules/addon.node";
+
+    expect(formatNpxAbiMismatchGuidance(message)).toEqual([
+      "ネイティブモジュールの Node ABI が一致していません。",
+      "該当する npx キャッシュを削除してから install を再試行してください。",
+    ]);
+  });
+
   it("NODE_MODULE_VERSION を含まないエラーでは案内しない", () => {
     expect(formatNpxAbiMismatchGuidance("database is locked")).toEqual([]);
   });

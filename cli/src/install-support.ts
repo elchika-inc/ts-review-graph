@@ -52,7 +52,7 @@ function extractNpxCacheDirectory(message: string): string | null {
     /"(\/[^"\r\n]*\/_npx\/[A-Za-z0-9_-]+)(?:\/[^"\r\n]*)?"/
   );
   const unquoted = message.match(
-    /(\/[^\s\r\n]*\/_npx\/[A-Za-z0-9_-]+)(?:\/[^\s\r\n]*)?/
+    /(?:^|[ \t])(\/[^\s\r\n]*\/_npx\/[A-Za-z0-9_-]+)(?:\/[^\s\r\n]*)?/
   );
   return singleQuoted?.[1] ?? doubleQuoted?.[1] ?? unquoted?.[1] ?? null;
 }

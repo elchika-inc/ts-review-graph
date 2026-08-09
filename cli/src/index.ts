@@ -76,17 +76,17 @@ program
 
     // 3. .gitignore で SQLite DB と WAL/SHM を除外する
     const gitignorePath = path.join(projectRoot, ".gitignore");
-    if (existsSync(gitignorePath)) {
-      try {
-        const current = readFileSync(gitignorePath, "utf-8");
-        const update = updateGraphGitignore(current);
-        if (update.changed) {
-          writeFileSync(gitignorePath, update.content);
-          console.log("✓ .gitignore に graph.db / WAL / SHM の除外を設定しました");
-        }
-      } catch (err) {
-        console.warn(`⚠ .gitignore の更新に失敗しました: ${err instanceof Error ? err.message : err}`);
+    try {
+      const current = existsSync(gitignorePath)
+        ? readFileSync(gitignorePath, "utf-8")
+        : "";
+      const update = updateGraphGitignore(current);
+      if (update.changed) {
+        writeFileSync(gitignorePath, update.content);
+        console.log("✓ .gitignore に graph.db / WAL / SHM の除外を設定しました");
       }
+    } catch (err) {
+      console.warn(`⚠ .gitignore の更新に失敗しました: ${err instanceof Error ? err.message : err}`);
     }
 
     // 4. tsconfig リストを解決
