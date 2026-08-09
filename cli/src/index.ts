@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildMcpServerEntry } from "./mcp-entry.js";
 
 const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
 const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
@@ -155,11 +156,7 @@ program
     }
 
     // 7. MCP サーバーを .mcp.json に登録 — グラフ構築成功後のみ実行
-    const serverEntry = {
-      command: "npx",
-      args: ["-y", "@elchika-inc/ts-review-graph-mcp-server"],
-      env: { TS_REVIEW_GRAPH_DB: dbPath },
-    };
+    const serverEntry = buildMcpServerEntry(projectRoot, dbPath);
     const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
     mcpServers["ts-review-graph"] = serverEntry;
     mcpJson["mcpServers"] = mcpServers;

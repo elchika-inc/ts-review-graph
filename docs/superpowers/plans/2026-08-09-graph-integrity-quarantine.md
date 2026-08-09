@@ -1335,13 +1335,13 @@ git commit -m "feat(cli): status に health 行を追加し projectRoot を各�
 - Consumes: なし
 - Produces: なし
 
-- [ ] **Step 1: `cli` パッケージでテストが動くようにする**
+- [x] **Step 1: `cli` パッケージでテストが動くようにする**
 
 `cli/package.json` の `test` スクリプトが `--passWithNoTests` になっているため、
 テストファイルを置けばそのまま vitest が拾う。`cli/vitest.config.ts` が無い場合は
 `packages/core/vitest.config.ts` と同じ内容で作成すること。
 
-- [ ] **Step 2: 失敗するテストを書く**
+- [x] **Step 2: 失敗するテストを書く**
 
 `cli/tests/install-mcp-entry.test.ts`:
 
@@ -1366,12 +1366,12 @@ describe("buildMcpServerEntry", () => {
 });
 ```
 
-- [ ] **Step 3: テストを実行して失敗を確認する**
+- [x] **Step 3: テストを実行して失敗を確認する**
 
 Run: `cd cli && npx vitest run tests/install-mcp-entry.test.ts`
 Expected: FAIL — `Failed to resolve import "../src/mcp-entry.js"`
 
-- [ ] **Step 4: 実装する**
+- [x] **Step 4: 実装する**
 
 `cli/src/mcp-entry.ts` を新規作成する:
 
@@ -1414,7 +1414,7 @@ export function buildMcpServerEntry(projectRoot: string, dbPath: string): McpSer
 import { buildMcpServerEntry } from "./mcp-entry.js";
 ```
 
-- [ ] **Step 5: 既存の絶対パス env を除去する処理を追加する**
+- [x] **Step 5: 既存の絶対パス env を除去する処理を追加する**
 
 `mcpServers["ts-review-graph"] = serverEntry;` は既存エントリを丸ごと置き換えるため、
 古い `env.TS_REVIEW_GRAPH_DB` は自動的に除去される。
@@ -1436,12 +1436,12 @@ import { buildMcpServerEntry } from "./mcp-entry.js";
   });
 ```
 
-- [ ] **Step 6: テストを実行して成功を確認する**
+- [x] **Step 6: テストを実行して成功を確認する**
 
 Run: `cd cli && npx vitest run`
 Expected: PASS（3 件）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add cli/src/mcp-entry.ts cli/src/index.ts cli/tests/install-mcp-entry.test.ts cli/vitest.config.ts
