@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { openDb, buildFullGraph, updateFile } from "@elchika-inc/ts-review-graph-core";
+import { checkGraphHealth, openDb, buildFullGraph, updateFile } from "@elchika-inc/ts-review-graph-core";
 import {
   mkdirSync,
   existsSync,
@@ -351,8 +351,12 @@ program
   .option("--db <path>", "graph.db のパス")
   .action((opts) => {
     const dbPath =
-      (opts.db as string | undefined) ??
-      path.join(process.cwd(), ".ts-review-graph/graph.db");
+      typeof opts.db === "string"
+        ? path.resolve(opts.db)
+        : path.join(process.cwd(), ".ts-review-graph/graph.db");
+    const projectRoot = typeof opts.db === "string"
+      ? path.resolve(path.dirname(dbPath), "..")
+      : process.cwd();
 
     if (!existsSync(dbPath)) {
       console.error(
@@ -381,6 +385,13 @@ program
       const latest = db!
         .prepare("SELECT MAX(updated_at) as t FROM file_hashes")
         .get() as { t: number | null };
+      const health = checkGraphHealth(db!, projectRoot);
+      const healthText =
+        health.status === "ok"
+          ? "OK"
+          : health.status === "mismatch"
+            ? `MISMATCH (${health.reason}) — ${health.detail}`
+            : `STALE (${health.staleFiles}/${health.totalFiles} files changed)`;
 
       console.log("ts-review-graph status:");
       console.log(`  nodes:      ${nodeCount}`);
@@ -389,6 +400,7 @@ program
       console.log(
         `  updated_at: ${latest.t ? new Date(latest.t).toISOString() : "未構築"}`
       );
+      console.log(`  health:     ${healthText}`);
     } catch (err) {
       console.error("ステータス取得に失敗しました:", err instanceof Error ? err.message : err);
       process.exit(1);

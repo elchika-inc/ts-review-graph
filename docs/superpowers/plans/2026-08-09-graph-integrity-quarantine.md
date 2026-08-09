@@ -1252,7 +1252,7 @@ Run: `grep -n "buildFullGraph\|updateFile" cli/src/index.ts`
 Run: `pnpm build`
 Expected: 型エラーなしで成功
 
-- [ ] **Step 3: status に health 行を追加する**
+- [x] **Step 3: status に health 行を追加する**
 
 `cli/src/index.ts:379-385` の出力ブロックに 1 行追加する:
 
@@ -1277,7 +1277,7 @@ Expected: 型エラーなしで成功
 
 import に `checkGraphHealth` を追加すること。
 
-- [ ] **Step 4: 手動で実測する**
+- [x] **Step 4: 手動で実測する**
 
 ```bash
 pnpm build
@@ -1308,7 +1308,7 @@ Expected: `health: STALE (1/1 files changed)`
 
 **この実測結果を、コミットメッセージまたは PR 本文に貼ること。**
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add cli/src/index.ts
