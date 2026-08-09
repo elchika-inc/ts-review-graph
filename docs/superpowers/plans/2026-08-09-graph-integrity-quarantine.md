@@ -1562,7 +1562,7 @@ git commit -m "docs(plugin): PreToolUse フックの入力契約を実測して�
 - Consumes: `SCHEMA_VERSION` (Task 2)
 - Produces: なし
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/core/tests/hook-consistency.test.ts`:
 
@@ -1614,13 +1614,13 @@ describe("pre-read.sh と core の乖離検知", () => {
 -- edges.kind の取りうる値: IMPORTS_FROM | TYPED_BY | IMPLEMENTS | EXTENDS | HAS_TEST
 ```
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/core && npx vitest run tests/hook-consistency.test.ts`
 Expected: FAIL — `expect(VALID_KINDS).toContain("CALLS")` で落ちる、
 および `schema_version` が見つからない
 
-- [ ] **Step 3: pre-read.sh を書き換える**
+- [x] **Step 3: pre-read.sh を書き換える**
 
 `packages/plugin/hooks/scripts/pre-read.sh` を全面的に置き換える。
 **`FILE_PATH` の取得方法は Task 10 の実測結果に従うこと**
@@ -1696,7 +1696,7 @@ echo "SKIP all other files — not in blast radius."
 **変更点:** 存在しない edge kind `CALLS` を削除、`schema_version` の検疫を追加、
 パスをルート相対へ正規化、入力取得を実測済みの契約に合わせた。
 
-- [ ] **Step 4: post-write.sh を同じ方針で修正する**
+- [x] **Step 4: post-write.sh を同じ方針で修正する**
 
 `packages/plugin/hooks/scripts/post-write.sh` を確認し、以下を適用する:
 
@@ -1707,7 +1707,7 @@ echo "SKIP all other files — not in blast radius."
 
 変更内容を Step 6 のコミットメッセージに明記すること。
 
-- [ ] **Step 5: テストを実行して成功を確認する**
+- [x] **Step 5: テストを実行して成功を確認する**
 
 Run: `cd packages/core && npx vitest run tests/hook-consistency.test.ts`
 Expected: PASS（3 件）
@@ -1720,7 +1720,7 @@ Expected: 出力なし・exit 0
 Run: `bash -n packages/plugin/hooks/scripts/post-write.sh`
 Expected: 出力なし・exit 0
 
-- [ ] **Step 6: 旧形式 DB に対する検疫を手で実測する**
+- [x] **Step 6: 旧形式 DB に対する検疫を手で実測する**
 
 ```bash
 rm -f /tmp/legacy.db
@@ -1736,7 +1736,7 @@ Expected: 「グラフが旧形式です」の警告が表示され、ブラス�
 
 **この出力をコミットメッセージまたは PR 本文に貼ること。**
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add packages/plugin/hooks/scripts/pre-read.sh packages/plugin/hooks/scripts/post-write.sh packages/core/tests/hook-consistency.test.ts packages/core/src/db.ts

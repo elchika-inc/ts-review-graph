@@ -4,7 +4,8 @@
 set -euo pipefail
 
 DB_PATH="${TS_REVIEW_GRAPH_DB:-$(pwd)/.ts-review-graph/graph.db}"
-FILE_PATH="${CLAUDE_TOOL_INPUT_FILE_PATH:-${CLAUDE_TOOL_INPUT_PATH:-}}"
+INPUT_JSON="$(cat)"
+FILE_PATH="$(printf '%s' "$INPUT_JSON" | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
 
 if [ -z "$FILE_PATH" ] || [ ! -f "$DB_PATH" ]; then
   exit 0

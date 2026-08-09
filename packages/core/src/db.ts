@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 
 CREATE TABLE IF NOT EXISTS edges (
+  -- edges.kind の取りうる値: IMPORTS_FROM | TYPED_BY | IMPLEMENTS | EXTENDS | HAS_TEST
   source_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   -- target_id には意図的に REFERENCES を付けない。
   -- 増分更新でファイルAのノードを削除するとき、source が A であるエッジだけを
