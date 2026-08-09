@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { openDb } from "@elchika-inc/ts-review-graph-core";
+import { checkGraphHealth, openDb, SCHEMA_VERSION, writeMeta } from "@elchika-inc/ts-review-graph-core";
 import { registerTools } from "../src/tools/index.js";
 import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync, cpSync } from "node:fs";
 import path from "node:path";
@@ -33,7 +33,19 @@ beforeEach(() => {
   // TS_REVIEW_GRAPH_DB を設定して resolveFilePath がプロジェクトルートを正しく解決できるようにする
   process.env["TS_REVIEW_GRAPH_DB"] = TEST_DB;
 
+  mkdirSync(TEST_PROJECT_ROOT, { recursive: true });
+  writeFileSync(IMPL_FILE, "import './dep.js';\nexport const impl = 1;\n");
+  writeFileSync(DEP_FILE, "export const dep = 1;\n");
+  writeFileSync(TEST_FILE, "import './impl.js';\n");
+
   db = openDb(TEST_DB);
+  writeFileSync(path.join(TEST_PROJECT_ROOT, ".ts-review-graph", "config.json"), JSON.stringify({ tsconfigs: [] }));
+  writeMeta(db, {
+    schemaVersion: SCHEMA_VERSION,
+    tsconfigs: [],
+    builtAt: Date.now(),
+    builtRoot: TEST_PROJECT_ROOT,
+  });
 
   // impl.ts ノード（DB はプロジェクトルート相対パス）
   db.prepare(
@@ -59,6 +71,14 @@ beforeEach(() => {
   db.prepare(
     "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
   ).run("impl.ts::__file__", "dep.ts::__file__", "IMPORTS_FROM");
+
+  const updatedAt = Date.now() + 1_000;
+  const insertHash = db.prepare(
+    "INSERT OR REPLACE INTO file_hashes (file, hash, updated_at) VALUES (?,?,?)"
+  );
+  insertHash.run("impl.ts", "fixture-impl", updatedAt);
+  insertHash.run("dep.ts", "fixture-dep", updatedAt);
+  insertHash.run("impl.test.ts", "fixture-test", updatedAt);
 });
 
 afterEach(() => {
@@ -68,6 +88,10 @@ afterEach(() => {
 });
 
 describe("registerTools", () => {
+  it("primary fixture は健康なグラフである", () => {
+    expect(checkGraphHealth(db, TEST_PROJECT_ROOT)).toEqual({ status: "ok" });
+  });
+
   it("get_minimal_context がファイルリストを含むテキストを返す", () => {
     const result = registerTools(db, "get_minimal_context", {
       changed_files: [IMPL_FILE],
@@ -921,5 +945,41 @@ describe("出力サニタイズ（改行インジェクション対策）", () =
     expect(result.isError).toBeFalsy();
     const text = result.content[0].text;
     expect(text).not.toContain("\nevil-injection");
+  });
+});
+
+describe("検疫の適用", () => {
+  it("旧形式 DB では get_minimal_context が isError を返す", () => {
+    const legacyPath = `/tmp/ts-rg-legacy-${randomUUID()}.db`;
+    const legacyDb = openDb(legacyPath);
+    try {
+      const result = registerTools(legacyDb, "get_minimal_context", {
+        changed_files: ["src/a.ts"],
+        mode: "review",
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("build_graph");
+    } finally {
+      legacyDb.close();
+      for (const ext of ["", "-wal", "-shm"]) {
+        const p = legacyPath + ext;
+        if (existsSync(p)) rmSync(p);
+      }
+    }
+  });
+
+  it("build_graph は検疫の対象外（旧形式 DB でも拒否されない）", () => {
+    const legacyPath = `/tmp/ts-rg-legacy2-${randomUUID()}.db`;
+    const legacyDb = openDb(legacyPath);
+    try {
+      const result = registerTools(legacyDb, "graph_status", {});
+      expect(result.isError).not.toBe(true);
+    } finally {
+      legacyDb.close();
+      for (const ext of ["", "-wal", "-shm"]) {
+        const p = legacyPath + ext;
+        if (existsSync(p)) rmSync(p);
+      }
+    }
   });
 });

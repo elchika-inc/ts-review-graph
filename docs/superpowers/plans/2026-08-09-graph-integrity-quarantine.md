@@ -1056,7 +1056,7 @@ git commit -m "feat(mcp): パス解決をルート相対に変更しリポジト
 （`get_minimal_context` / `get_impact` / `get_type_usages` / `get_test_coverage` / `query_graph` / `find_cycles`）。
 `build_graph` と `graph_status` は**除外**する（前者は復旧手段そのもの、後者は診断表示のため）。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/mcp-server/tests/tools.test.ts` の末尾に追記
 （既存テストの DB セットアップ流儀に合わせること。以下は `registerTools` を直接呼ぶ形）:
@@ -1090,12 +1090,12 @@ describe("検疫の適用", () => {
 });
 ```
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/mcp-server && npx vitest run tests/tools.test.ts`
 Expected: FAIL — `isError` が `undefined`
 
-- [ ] **Step 3: registerTools に検疫を組み込む**
+- [x] **Step 3: registerTools に検疫を組み込む**
 
 `packages/mcp-server/src/tools/index.ts`。まず、既存の
 `process.env["TS_REVIEW_GRAPH_DB"]` からプロジェクトルートを導出するヘルパを用意する
@@ -1142,7 +1142,7 @@ const QUARANTINE_EXEMPT = new Set(["build_graph", "graph_status"]);
   }
 ```
 
-- [ ] **Step 4: drift 警告の付与を実装する**
+- [x] **Step 4: drift 警告の付与を実装する**
 
 Step 3 の擬似コードを、既存ディスパッチを 1 回だけ実行する形に整理する。
 `registerTools` の本体を次の構造にすること:
@@ -1183,7 +1183,7 @@ export function registerTools(db: Db | null, toolName: string, args: Record<stri
 既存の `switch` / `if` によるツール振り分けを `function dispatch(...)` へそのまま移動すること。
 **振り分けのロジック自体は変更しない。**
 
-- [ ] **Step 5: get_minimal_context に NOT IN GRAPH 表示を追加する**
+- [x] **Step 5: get_minimal_context に NOT IN GRAPH 表示を追加する**
 
 `packages/mcp-server/src/tools/get-minimal-context.ts`。
 入力ファイルごとに、`file_hashes` に登録があるかを確認し、無ければ明示する:
@@ -1211,12 +1211,12 @@ export function registerTools(db: Db | null, toolName: string, args: Record<stri
 `resolvedFiles` は `resolveFilePath` を通した後のルート相対パスの配列を指す。
 既存コード内で該当する変数名が異なる場合はそれに合わせること。
 
-- [ ] **Step 6: テストを実行して成功を確認する**
+- [x] **Step 6: テストを実行して成功を確認する**
 
 Run: `cd packages/mcp-server && npx vitest run`
 Expected: 全 PASS
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add packages/mcp-server/src/tools/
