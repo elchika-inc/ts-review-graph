@@ -13,7 +13,7 @@ INPUT_JSON="$(cat)"
 FILE_PATH="$(printf '%s' "$INPUT_JSON" | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
 ```
 
-`/tmp/hook-probe.log` で観測した該当部分:
+`/tmp/hook-probe.log` で観測した該当部分（ID とローカルパスは秘匿化済み）:
 
 ```text
 --- argv ---
@@ -23,11 +23,11 @@ CLAUDE_CODE_ENTRYPOINT=sdk-cli
 CLAUDE_EFFORT=high
 CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
 CLAUDE_CODE_CHILD_SESSION=1
-CLAUDE_PID=16014
-CLAUDE_PROJECT_DIR=/Users/nishikawa/orca/workspaces/ts-review-graph/graph-integrity-quarantine
+CLAUDE_PID=<redacted>
+CLAUDE_PROJECT_DIR=/path/to/project
 CLAUDE_CODE_NO_FLICKER=1
 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-CLAUDE_CODE_SESSION_ID=1732b3c1-ac20-428b-a2a3-f66a04c57dd7
+CLAUDE_CODE_SESSION_ID=<redacted>
 --- stdin ---
-{"session_id":"1732b3c1-ac20-428b-a2a3-f66a04c57dd7","transcript_path":"/Users/nishikawa/.claude/projects/-Users-nishikawa-orca-workspaces-ts-review-graph-graph-integrity-quarantine/1732b3c1-ac20-428b-a2a3-f66a04c57dd7.jsonl","cwd":"/Users/nishikawa/orca/workspaces/ts-review-graph/graph-integrity-quarantine","prompt_id":"cef34699-2070-4d25-b115-0661551956a1","permission_mode":"bypassPermissions","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/Users/nishikawa/orca/workspaces/ts-review-graph/graph-integrity-quarantine/package.json"},"tool_use_id":"toolu_01D1hjYNyaLRDcVfa8YssAtD"}
+{"session_id":"<redacted>","transcript_path":"<redacted>","cwd":"/path/to/project","prompt_id":"<redacted>","permission_mode":"<redacted>","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/path/to/project/package.json"},"tool_use_id":"<redacted>"}
 ```

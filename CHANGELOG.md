@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking Changes
 - `graph.db` のスキーマを変更した。**既存のグラフは再構築が必要**（`ts-review-graph build`）
 - `analyzeProject` / `updateFile` / `buildFullGraph` に `projectRoot` 引数を追加した
-- `install` が `.mcp.json` に `TS_REVIEW_GRAPH_DB` を書き込まなくなった
+- `install` は既定 DB の場合 `.mcp.json` に `TS_REVIEW_GRAPH_DB` を書き込まなくなった。`--db` で既定以外を指定した場合のみ、プロジェクトルート相対値を書き込む
 
 ### Fixed
 - リポジトリの移動・worktree・別マシンでのクローン後に、絶対パスで保存されたグラフが無言で全件ミスしていた問題を、プロジェクトルート相対パス保存とグラフ検疫により修正した

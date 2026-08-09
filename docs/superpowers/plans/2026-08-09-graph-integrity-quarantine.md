@@ -1079,12 +1079,40 @@ describe("検疫の適用", () => {
   });
 
   it("build_graph は検疫の対象外（旧形式 DB でも拒否されない）", () => {
-    const legacyDb = openDb(`/tmp/ts-rg-legacy2-${randomUUID()}.db`);
+    const projectRoot = `/tmp/ts-rg-rebuild-${randomUUID()}`;
+    const legacyPath = path.join(projectRoot, ".ts-review-graph", "graph.db");
+    const localTsconfig = path.join(projectRoot, "tsconfig.json");
+    mkdirSync(projectRoot, { recursive: true });
+    writeFileSync(localTsconfig, JSON.stringify({ include: ["*.ts"] }));
+    writeFileSync(path.join(projectRoot, "a.ts"), "export const a = 1;\n");
+    const legacyDb = openDb(legacyPath);
+    const previousDb = process.env["TS_REVIEW_GRAPH_DB"];
+    try {
+      process.env["TS_REVIEW_GRAPH_DB"] = legacyPath;
+      const result = registerTools(legacyDb, "build_graph", {
+        tsconfigs: [localTsconfig],
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0].text).toContain("グラフ構築完了");
+      expect(checkGraphHealth(legacyDb, projectRoot)).toEqual({ status: "ok" });
+    } finally {
+      if (previousDb === undefined) delete process.env["TS_REVIEW_GRAPH_DB"];
+      else process.env["TS_REVIEW_GRAPH_DB"] = previousDb;
+      legacyDb.close();
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("graph_status は診断表示のため検疫の対象外", () => {
+    const statusLegacyPath = `/tmp/ts-rg-status-${randomUUID()}.db`;
+    const legacyDb = openDb(statusLegacyPath);
     try {
       const result = registerTools(legacyDb, "graph_status", {});
       expect(result.isError).not.toBe(true);
+      expect(result.content[0].text).toContain("nodes");
     } finally {
       legacyDb.close();
+      rmSync(statusLegacyPath, { force: true });
     }
   });
 });
@@ -1534,6 +1562,10 @@ Expected: argv / `CLAUDE_*` 環境変数 / stdin のいずれかにファイル�
 - ファイルパスを取り出すための正確な式
 - `/tmp/hook-probe.log` の該当部分の引用
 
+実測時、この worktree には `.claude/settings.local.json` が存在しないことを確認してから
+新規作成した。撤収時は新規作成したファイル全体を削除した。既存ファイルがある場合は
+既存キーを保持してプローブ entry だけを追加し、撤収時もその entry だけを削除する。
+
 - [x] **Step 5: プローブを撤収する**
 
 `.claude/settings.local.json` から追加した `hooks` セクションを削除し、
@@ -1603,10 +1635,13 @@ describe("pre-read.sh と core の乖離検知", () => {
 
   it("フックが schema_version を検査している", () => {
     expect(hook).toContain("schema_version");
-    expect(hook).toContain(SCHEMA_VERSION);
+    expect(hook.match(/^SCHEMA_VERSION="([^"]+)"$/m)?.[1]).toBe(SCHEMA_VERSION);
   });
 });
 ```
+
+レビュー修正では同じ3件のテスト数を維持したまま、第3テストで DB 不在時の
+無出力 exit 0 と、旧形式 fixture DB に対する警告・ブラスト半径非表示も実行検証する。
 
 `db.ts` に edge kind の一覧が現れない場合は、DDL の直上に次のコメントを追加すること:
 

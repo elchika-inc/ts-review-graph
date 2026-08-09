@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { checkGraphHealth, openDb, SCHEMA_VERSION, writeMeta } from "@elchika-inc/ts-review-graph-core";
 import { registerTools } from "../src/tools/index.js";
-import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync, cpSync } from "node:fs";
+import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync, cpSync, utimesSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -90,6 +90,37 @@ afterEach(() => {
 describe("registerTools", () => {
   it("primary fixture は健康なグラフである", () => {
     expect(checkGraphHealth(db, TEST_PROJECT_ROOT)).toEqual({ status: "ok" });
+  });
+
+  it("ファイルが drift しても警告を先頭に付けて正常結果を返す", () => {
+    const future = new Date(Date.now() + 60_000);
+    utimesSync(IMPL_FILE, future, future);
+
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE],
+      mode: "review",
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text.split("\n")[0]).toBe(
+      "⚠ STALE: 1 files changed since graph build (3 total)"
+    );
+    expect(result.content[0].text).toContain("impl.ts");
+  });
+
+  it("ファイル状態を検証不能な場合は fail-closed で拒否する", () => {
+    const loopPath = path.join(TEST_PROJECT_ROOT, "loop.ts");
+    symlinkSync("loop.ts", loopPath);
+    db.prepare(
+      "INSERT INTO file_hashes (file, hash, updated_at) VALUES (?, ?, ?)"
+    ).run("loop.ts", "loop", Date.now());
+
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE],
+      mode: "review",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("GRAPH HEALTH CHECK FAILED");
   });
 
   it("get_minimal_context がファイルリストを含むテキストを返す", () => {
@@ -520,13 +551,15 @@ describe("find_cycles", () => {
 
 describe("build_graph", () => {
   it("build_graph: 実際の tsconfig からグラフを構築し、ノードを含む DB を返す", () => {
-    const buildDbPath = `/tmp/ts-rg-mcp-build-test-${randomUUID()}.db`;
+    const buildRoot = `/tmp/ts-rg-mcp-build-test-${randomUUID()}`;
+    const buildDbPath = path.join(buildRoot, ".ts-review-graph", "graph.db");
+    cpSync(path.dirname(FIXTURE_TSCONFIG), buildRoot, { recursive: true });
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
 
     try {
       const result = registerTools(null, "build_graph", {
-        tsconfigs: [FIXTURE_TSCONFIG],
+        tsconfigs: [path.join(buildRoot, "tsconfig.json")],
       });
       expect(result.isError).toBeFalsy();
       expect(result.content[0].text).toContain("nodes");
@@ -546,25 +579,25 @@ describe("build_graph", () => {
       } else {
         delete process.env["TS_REVIEW_GRAPH_DB"];
       }
-      for (const ext of ["", "-wal", "-shm"]) {
-        const p = buildDbPath + ext;
-        if (existsSync(p)) rmSync(p);
-      }
+      rmSync(buildRoot, { recursive: true, force: true });
     }
   });
 
   it("build_graph: 同じ tsconfig で2回実行しても冪等（ノード数が増加しない）", () => {
-    const buildDbPath = `/tmp/ts-rg-mcp-build-idempotent-${randomUUID()}.db`;
+    const buildRoot = `/tmp/ts-rg-mcp-build-idempotent-${randomUUID()}`;
+    const buildDbPath = path.join(buildRoot, ".ts-review-graph", "graph.db");
+    cpSync(path.dirname(FIXTURE_TSCONFIG), buildRoot, { recursive: true });
+    const localTsconfig = path.join(buildRoot, "tsconfig.json");
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
 
     try {
-      registerTools(null, "build_graph", { tsconfigs: [FIXTURE_TSCONFIG] });
+      registerTools(null, "build_graph", { tsconfigs: [localTsconfig] });
       const db1 = openDb(buildDbPath);
       const count1 = (db1.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number }).c;
       db1.close();
 
-      registerTools(null, "build_graph", { tsconfigs: [FIXTURE_TSCONFIG] });
+      registerTools(null, "build_graph", { tsconfigs: [localTsconfig] });
       const db2 = openDb(buildDbPath);
       const count2 = (db2.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number }).c;
       db2.close();
@@ -576,10 +609,7 @@ describe("build_graph", () => {
       } else {
         delete process.env["TS_REVIEW_GRAPH_DB"];
       }
-      for (const ext of ["", "-wal", "-shm"]) {
-        const p = buildDbPath + ext;
-        if (existsSync(p)) rmSync(p);
-      }
+      rmSync(buildRoot, { recursive: true, force: true });
     }
   });
 
@@ -958,7 +988,9 @@ describe("検疫の適用", () => {
         mode: "review",
       });
       expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("legacy_schema");
       expect(result.content[0].text).toContain("build_graph");
+      expect(result.content[0].text).not.toContain("NOT IN GRAPH");
     } finally {
       legacyDb.close();
       for (const ext of ["", "-wal", "-shm"]) {
@@ -969,11 +1001,43 @@ describe("検疫の適用", () => {
   });
 
   it("build_graph は検疫の対象外（旧形式 DB でも拒否されない）", () => {
-    const legacyPath = `/tmp/ts-rg-legacy2-${randomUUID()}.db`;
+    const legacyPath = path.join(TEST_PROJECT_ROOT, ".ts-review-graph", `legacy-${randomUUID()}.db`);
+    const legacyDb = openDb(legacyPath);
+    const previousDb = process.env["TS_REVIEW_GRAPH_DB"];
+    try {
+      process.env["TS_REVIEW_GRAPH_DB"] = legacyPath;
+      const localTsconfig = path.join(TEST_PROJECT_ROOT, "tsconfig.json");
+      writeFileSync(
+        localTsconfig,
+        JSON.stringify({
+          compilerOptions: { target: "ES2022", module: "ESNext" },
+          include: ["*.ts"],
+        })
+      );
+      const result = registerTools(legacyDb, "build_graph", {
+        tsconfigs: [localTsconfig],
+      });
+      expect(result.isError, result.content[0].text).not.toBe(true);
+      expect(result.content[0].text).toContain("グラフ構築完了");
+      expect(checkGraphHealth(legacyDb, TEST_PROJECT_ROOT)).toEqual({ status: "ok" });
+    } finally {
+      if (previousDb === undefined) delete process.env["TS_REVIEW_GRAPH_DB"];
+      else process.env["TS_REVIEW_GRAPH_DB"] = previousDb;
+      legacyDb.close();
+      for (const ext of ["", "-wal", "-shm"]) {
+        const p = legacyPath + ext;
+        if (existsSync(p)) rmSync(p);
+      }
+    }
+  });
+
+  it("graph_status は診断表示のため検疫の対象外", () => {
+    const legacyPath = `/tmp/ts-rg-status-legacy-${randomUUID()}.db`;
     const legacyDb = openDb(legacyPath);
     try {
       const result = registerTools(legacyDb, "graph_status", {});
       expect(result.isError).not.toBe(true);
+      expect(result.content[0].text).toContain("nodes");
     } finally {
       legacyDb.close();
       for (const ext of ["", "-wal", "-shm"]) {

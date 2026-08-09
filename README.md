@@ -83,7 +83,7 @@ SKIP: 1170 other files — not in blast radius
 
 | Command | Description |
 |---|---|
-| `npx @elchika-inc/ts-review-graph@latest install --tsconfig <path>` | Setup + initial build + register MCP + append `CLAUDE.md` |
+| `npx @elchika-inc/ts-review-graph@latest install --tsconfig <path> [--db <path>]` | Setup + initial build + register MCP + append `CLAUDE.md` |
 | `npx @elchika-inc/ts-review-graph build [--tsconfig <path>]... [--db <path>]` | Rebuild the graph |
 | `npx @elchika-inc/ts-review-graph update <file> [--db <path>]` | Incremental update for a single file |
 | `npx @elchika-inc/ts-review-graph status [--db <path>]` | Show graph statistics |
@@ -104,7 +104,8 @@ SKIP: 1170 other files — not in blast radius
 
 ### Graph health checks
 
-Every graph-reading tool validates the graph before answering:
+The six graph-query tools (`get_minimal_context`, `get_impact`, `get_type_usages`,
+`get_test_coverage`, `query_graph`, and `find_cycles`) validate the graph before answering:
 
 | Condition | Behavior |
 |---|---|
@@ -113,6 +114,7 @@ Every graph-reading tool validates the graph before answering:
 | Known files changed on disk since the graph was built | Answers, prefixed with `⚠ STALE: N files changed` |
 
 `ts-review-graph status` reports the same verdict on a `health:` line.
+MCP `graph_status` remains quarantine-exempt so it can report raw diagnostics for a broken graph.
 
 Graph paths are stored relative to the project root, so `graph.db` survives
 moving the repository, working in a git worktree, or cloning on another machine.

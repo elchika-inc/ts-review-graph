@@ -2,7 +2,7 @@ import { statSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Db } from "./db.js";
 import { readMeta, SCHEMA_VERSION } from "./meta.js";
-import { toProjectAbsolute } from "./paths.js";
+import { toProjectAbsolute, toProjectRelative } from "./paths.js";
 
 export type GraphHealth =
   | { status: "ok" }
@@ -19,7 +19,7 @@ function readConfiguredTsconfigs(projectRoot: string): string[] | null {
     const list = (parsed as { tsconfigs?: unknown }).tsconfigs;
     if (!Array.isArray(list)) return null;
     if (!list.every((v) => typeof v === "string")) return null;
-    return [...(list as string[])].sort();
+    return (list as string[]).map((value) => toProjectRelative(projectRoot, value)).sort();
   } catch {
     return null;
   }
@@ -76,9 +76,15 @@ export function checkGraphHealth(db: Db, projectRoot: string): GraphHealth {
     try {
       const st = statSync(toProjectAbsolute(projectRoot, row.file));
       if (st.mtimeMs > row.updated_at) staleFiles++;
-    } catch {
-      // ENOENT 等: グラフに残っているがディスクに無い = ドリフト
-      staleFiles++;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") {
+        // グラフに残っているがディスクに無い = ドリフト
+        staleFiles++;
+      } else {
+        // 権限・symlink loop・I/O 障害など検証不能な状態はゲートで通さない。
+        throw err;
+      }
     }
   }
 

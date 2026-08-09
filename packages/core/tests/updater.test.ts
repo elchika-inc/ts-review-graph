@@ -3,7 +3,7 @@ import { openDb } from "../src/db.js";
 import { updateFile, buildFullGraph } from "../src/updater.js";
 import { readMeta, SCHEMA_VERSION } from "../src/meta.js";
 import { computeBlastRadius } from "../src/blast.js";
-import { rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { rmSync, existsSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -362,5 +362,17 @@ describe("updateFile のパス相対化", () => {
     expect(updateFile(db, filePath, tmpDir)).toBe("deleted");
     const rows = db.prepare("SELECT file FROM nodes WHERE file = 'a.ts'").all();
     expect(rows).toEqual([]);
+  });
+
+  it("プロジェクト内の symlink がルート外を指す場合は拒否する", () => {
+    const outsidePath = path.join(os.tmpdir(), `ts-rg-outside-${randomUUID()}.ts`);
+    const linkPath = path.join(tmpDir, "escape.ts");
+    writeFileSync(outsidePath, "export const secret = 1;\n");
+    symlinkSync(outsidePath, linkPath);
+    try {
+      expect(() => updateFile(db, linkPath, tmpDir)).toThrow(/outside project root/);
+    } finally {
+      rmSync(outsidePath, { force: true });
+    }
   });
 });

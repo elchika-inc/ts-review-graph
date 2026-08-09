@@ -1,6 +1,6 @@
-import { openDb, buildFullGraph } from "@elchika-inc/ts-review-graph-core";
+import { openDb, buildFullGraph, toProjectRelative } from "@elchika-inc/ts-review-graph-core";
 import path from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import type { ToolResult } from "./types.js";
 
 function loadTsconfigPaths(cwd: string, argTsconfigs?: string[]): string[] {
@@ -86,6 +86,14 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
   try {
     const startMs = Date.now();
     buildFullGraph(db, tsconfigPaths, cwd);
+    const configPath = path.join(cwd, ".ts-review-graph/config.json");
+    mkdirSync(path.dirname(configPath), { recursive: true });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        tsconfigs: tsconfigPaths.map((p) => toProjectRelative(cwd, p)),
+      }, null, 2) + "\n"
+    );
     const elapsed = Date.now() - startMs;
 
     // グラフ構築成功後の統計取得 — 失敗してもグラフ構築成功は確定なので別 catch で区別する

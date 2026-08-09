@@ -21,6 +21,14 @@ describe("toProjectRelative", () => {
   it("ルート外の絶対パスは例外を投げる", () => {
     expect(() => toProjectRelative("/repo", "/other/a.ts")).toThrow(/outside project root/);
   });
+
+  it("ルート外を指す相対パスは例外を投げる", () => {
+    expect(() => toProjectRelative("/repo", "../outside.ts")).toThrow(/outside project root/);
+  });
+
+  it("ルート直下の .. で始まるファイル名は受け付ける", () => {
+    expect(toProjectRelative("/repo", "/repo/..foo.ts")).toBe("..foo.ts");
+  });
 });
 
 describe("toProjectAbsolute", () => {

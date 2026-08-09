@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { checkGraphHealth, openDb, buildFullGraph, updateFile } from "@elchika-inc/ts-review-graph-core";
+import { checkGraphHealth, openDb, buildFullGraph, updateFile, toProjectRelative } from "@elchika-inc/ts-review-graph-core";
 import {
   mkdirSync,
   existsSync,
@@ -34,6 +34,7 @@ function readConfig(projectRoot: string): TsReviewGraphConfig | null {
 
 function writeConfig(projectRoot: string, config: TsReviewGraphConfig): void {
   const configPath = path.join(projectRoot, CONFIG_FILE_NAME);
+  mkdirSync(path.dirname(configPath), { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
 }
 
@@ -50,10 +51,11 @@ program
     (val: string, prev: string[]) => [...prev, val],
     [] as string[]
   )
-  .action((opts: { tsconfig: string[] }) => {
+  .option("--db <path>", "graph.db のパス")
+  .action((opts: { tsconfig: string[]; db?: string }) => {
     const projectRoot = process.cwd();
     const graphDir = path.join(projectRoot, ".ts-review-graph");
-    const dbPath = path.join(graphDir, "graph.db");
+    const dbPath = opts.db ? path.resolve(opts.db) : path.join(graphDir, "graph.db");
 
     // 1. ディレクトリ作成
     if (!existsSync(graphDir)) mkdirSync(graphDir, { recursive: true });
@@ -119,7 +121,7 @@ program
     }
 
     // 5. config.json 書き込み — 存在するパスのみを記録する
-    const relPaths = existingPaths.map((p) => path.relative(projectRoot, p));
+    const relPaths = existingPaths.map((p) => toProjectRelative(projectRoot, p));
     try {
       writeConfig(projectRoot, { tsconfigs: relPaths });
     } catch (err) {
@@ -269,6 +271,9 @@ program
     try {
       const startMs = Date.now();
       buildFullGraph(db!, existingPaths, projectRoot);
+      writeConfig(projectRoot, {
+        tsconfigs: existingPaths.map((p) => toProjectRelative(projectRoot, p)),
+      });
       const elapsed = Date.now() - startMs;
       console.log(`グラフ構築完了 (${elapsed}ms)`);
       try {

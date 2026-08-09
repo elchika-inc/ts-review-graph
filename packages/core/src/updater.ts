@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { resolve as resolvePath, dirname } from "node:path";
 import { Project } from "ts-morph";
 import type { Db } from "./db.js";
@@ -80,6 +80,10 @@ export function updateFile(db: Db, filePath: string, projectRoot: string): "skip
     })();
     return "deleted";
   }
+
+  // ルート内の symlink から外部ファイルを読む経路を拒否する。
+  // projectRoot 自体が symlink の場合もあるため、両方を実体パスへ解決して比較する。
+  toProjectRelative(realpathSync(projectRoot), realpathSync(absPath));
 
   const content = readFileSync(absPath, "utf-8");
   const newHash = sha256(content);

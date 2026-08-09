@@ -192,7 +192,18 @@ export function registerTools(
   let staleNotice: string | null = null;
 
   if (db && !QUARANTINE_EXEMPT.has(toolName)) {
-    const health = checkGraphHealth(db, getProjectRoot());
+    let health: ReturnType<typeof checkGraphHealth>;
+    try {
+      health = checkGraphHealth(db, getProjectRoot());
+    } catch (err) {
+      return {
+        content: [{
+          type: "text",
+          text: `✗ GRAPH HEALTH CHECK FAILED — 結果を返しません (${err instanceof Error ? err.message : String(err)})`,
+        }],
+        isError: true,
+      };
+    }
     if (health.status === "mismatch") {
       return {
         content: [{

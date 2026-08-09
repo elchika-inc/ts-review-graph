@@ -207,7 +207,8 @@ NOT IN GRAPH: src/new-file.ts — グラフ構築後に追加された可能性�
 
 | 経路 | 挙動 |
 |---|---|
-| MCP 各ツール | `mismatch` → `isError: true` で拒否 ／ `drift` → 結果先頭に警告行 |
+| MCP のグラフ照会 6 ツール | `mismatch` → `isError: true` で拒否 ／ `drift` → 結果先頭に警告行 |
+| MCP `graph_status` | 復旧診断のため検疫対象外。壊れた DB でも件数・時刻を表示 |
 | CLI `status` | `health:` 行を追加し `OK` / `MISMATCH(理由)` / `STALE(N/M)` を表示 |
 | `pre-read.sh` | bash のまま。`meta.schema_version` を SQL で読み、不一致なら結果を出さず警告 1 行のみ出力 |
 
@@ -262,7 +263,7 @@ CLI を起動できず、実測の結果として却下した。
    - 旧形式のフィクスチャ DB に対し、`checkGraphHealth` が `legacy_schema` を返すとき、
      `pre-read.sh` もブラスト半径を出力しないこと
    - `pre-read.sh` の SQL に現れる edge kind の集合が `db.ts` の
-     スキーマ定義（`IMPORTS_FROM` / `TYPED_BY` / `IMPLEMENTS` / `EXTENDS`）の
+     スキーマ定義（`IMPORTS_FROM` / `TYPED_BY` / `IMPLEMENTS` / `EXTENDS` / `HAS_TEST`）の
      部分集合であること（`CALLS` の陳腐化を再発させないための検査）
 6. `get_minimal_context` に未登録ファイルを渡すと `NOT IN GRAPH:` を出力する
 
@@ -303,19 +304,15 @@ stdin JSON 方式・環境変数方式のいずれでも出力が得られなか
 
 ## 完了基準（DoneCriteria）
 
-以下をすべて実測で確認できた時点で完了とする。
+worker が本実装で満たす完了基準は、実装計画の「DoneCriteria（worker の担当範囲）」を
+単一の正本とする。ビルド・全テスト・lint、可搬性、health 7 件、フック乖離検知 3 件、
+CLI health 遷移、旧形式 DB 検疫をそれぞれ実測する。
 
-1. `pnpm build` / `pnpm test` / `pnpm lint` がすべて成功する
-2. 新規テスト 6 件（§ 7）がすべて成功する
-3. ts-review-graph 自身に `install` を実行し、`get_minimal_context` が
-   実際のファイルに対して非空の結果を返す
-4. 3 の状態のプロジェクトを丸ごと別ディレクトリへコピーし、コピー先で同じクエリを
-   実行して同一の結果が返る（元のディレクトリはリネームせず温存する）
-5. `meta` テーブルを持たない旧形式 DB を配置した状態で MCP ツールを呼ぶと、
-   結果ではなく `mismatch: legacy_schema` のエラーが返る
-6. **（司令塔の完了ゲートで検証。worker の範囲外）** プラグインを導入した状態の
-   実 Claude Code セッションで `pre-read.sh` が発火し、出力が観測できる。
-   § 8 のとおり worker には観測不能なため、worker の DoneCriteria には含めない。
+以下は本実装の完了条件ではなく、後続ドッグフーディングの受入条件とする。
+
+1. ts-review-graph 自身に `install` を実行し、実ファイルへの MCP クエリが非空を返す
+2. 導入済みプロジェクトをコピーし、コピー先でも同じ MCP クエリが同じ結果を返す
+3. プラグイン導入済みの実 Claude Code セッションで `pre-read.sh` の発火を観測する
 
 ## 後続作業（本設計の範囲外）
 

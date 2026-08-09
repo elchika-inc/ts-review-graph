@@ -7,7 +7,6 @@ set -euo pipefail
 
 SCHEMA_VERSION="2"
 DB_PATH="${TS_REVIEW_GRAPH_DB:-$(pwd)/.ts-review-graph/graph.db}"
-PROJECT_ROOT="$(cd "$(dirname "$DB_PATH")/.." && pwd)"
 
 # --- ファイルパスの取得（Task 10 の実測結果） ---
 INPUT_JSON="$(cat)"
@@ -16,6 +15,8 @@ FILE_PATH="$(printf '%s' "$INPUT_JSON" | sed -n 's/.*"file_path"[[:space:]]*:[[:
 if [ -z "$FILE_PATH" ] || [ ! -f "$DB_PATH" ]; then
   exit 0
 fi
+
+PROJECT_ROOT="$(cd "$(dirname "$DB_PATH")/.." && pwd)"
 
 # --- 検疫: schema_version が一致しないグラフは使わない ---
 DB_VERSION="$(sqlite3 "$DB_PATH" "SELECT value FROM meta WHERE key = 'schema_version'" 2>/dev/null || true)"

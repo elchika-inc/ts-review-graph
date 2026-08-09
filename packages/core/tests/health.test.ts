@@ -3,7 +3,7 @@ import { openDb } from "../src/db.js";
 import { buildFullGraph } from "../src/updater.js";
 import { writeMeta, SCHEMA_VERSION } from "../src/meta.js";
 import { checkGraphHealth } from "../src/health.js";
-import { rmSync, existsSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
+import { rmSync, existsSync, writeFileSync, mkdirSync, utimesSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -18,6 +18,8 @@ function makeProject(): string {
   mkdirSync(path.join(dir, "src"), { recursive: true });
   mkdirSync(path.join(dir, ".ts-review-graph"), { recursive: true });
   writeFileSync(path.join(dir, "src/a.ts"), "export const a = 1;\n");
+  const old = new Date("2020-01-01T00:00:00.000Z");
+  utimesSync(path.join(dir, "src/a.ts"), old, old);
   writeFileSync(
     path.join(dir, "tsconfig.json"),
     JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" }, include: ["src"] })
@@ -66,6 +68,13 @@ describe("checkGraphHealth", () => {
   it("構築直後は ok", () => {
     buildFullGraph(db, [path.join(root, "tsconfig.json")], root);
     expect(checkGraphHealth(db, root).status).toBe("ok");
+    for (const configured of ["./tsconfig.json", path.join(root, "tsconfig.json")]) {
+      writeFileSync(
+        path.join(root, ".ts-review-graph/config.json"),
+        JSON.stringify({ tsconfigs: [configured] })
+      );
+      expect(checkGraphHealth(db, root).status).toBe("ok");
+    }
   });
 
   it("config.json の tsconfigs が増えると tsconfig_drift で mismatch", () => {
@@ -102,5 +111,12 @@ describe("checkGraphHealth", () => {
     const h = checkGraphHealth(db, root);
     expect(h.status).toBe("drift");
     expect(h.status === "drift" && h.staleFiles).toBe(1);
+
+    const loopPath = path.join(root, "loop.ts");
+    symlinkSync("loop.ts", loopPath);
+    db.prepare(
+      "INSERT INTO file_hashes (file, hash, updated_at) VALUES (?, ?, ?)"
+    ).run("loop.ts", "loop", Date.now());
+    expect(() => checkGraphHealth(db, root)).toThrow();
   });
 });
