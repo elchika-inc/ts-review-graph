@@ -16,7 +16,7 @@ if [ -z "$FILE_PATH" ] || [ ! -f "$DB_PATH" ]; then
   exit 0
 fi
 
-PROJECT_ROOT="$(cd "$(dirname "$DB_PATH")/.." && pwd)"
+PROJECT_ROOT="$(pwd)"
 
 # --- 検疫: schema_version が一致しないグラフは使わない ---
 DB_VERSION="$(sqlite3 "$DB_PATH" "SELECT value FROM meta WHERE key = 'schema_version'" 2>/dev/null || true)"
@@ -50,7 +50,7 @@ RESULT=$(sqlite3 "$DB_PATH" "
   )
   SELECT DISTINCT n.file, b.reason FROM blast b JOIN nodes n ON n.id = b.node_id
   ORDER BY b.depth, n.file
-  LIMIT 20
+  LIMIT 21
 " 2>/dev/null || true)
 
 if [ -z "$RESULT" ]; then
@@ -58,8 +58,21 @@ if [ -z "$RESULT" ]; then
 fi
 
 echo "[ts-review-graph] Blast radius for: $REL_PATH"
-echo "READ THESE FILES ONLY:"
+RESULT_COUNT="$(printf '%s\n' "$RESULT" | awk 'NF { count++ } END { print count + 0 }')"
+TRUNCATED=0
+if [ "$RESULT_COUNT" -gt 20 ]; then
+  TRUNCATED=1
+  RESULT="$(printf '%s\n' "$RESULT" | sed -n '1,20p')"
+  echo "BLAST RADIUS TRUNCATED: more than 20 files. This list is not complete."
+  echo "SUGGESTED FILES (partial):"
+else
+  echo "READ THESE FILES ONLY:"
+fi
 while IFS='|' read -r file reason; do
   echo "  $file  [$reason]"
 done <<< "$RESULT"
-echo "SKIP all other files — not in blast radius."
+if [ "$TRUNCATED" -eq 1 ]; then
+  echo "Run the MCP query for the complete blast radius; do not skip files based on this partial list."
+else
+  echo "SKIP all other files — not in blast radius."
+fi

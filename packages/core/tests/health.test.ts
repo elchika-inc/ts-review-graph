@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "../src/db.js";
-import { buildFullGraph } from "../src/updater.js";
+import { buildFullGraph, updateFile } from "../src/updater.js";
 import { writeMeta, SCHEMA_VERSION } from "../src/meta.js";
 import { checkGraphHealth } from "../src/health.js";
 import { rmSync, existsSync, writeFileSync, mkdirSync, utimesSync, symlinkSync } from "node:fs";
@@ -97,12 +97,15 @@ describe("checkGraphHealth", () => {
   it("ファイルを更新すると drift になる", () => {
     buildFullGraph(db, [path.join(root, "tsconfig.json")], root);
     const target = path.join(root, "src/a.ts");
-    const future = new Date(Date.now() + 60_000);
-    utimesSync(target, future, future);
+    const touchedAt = new Date();
+    utimesSync(target, touchedAt, touchedAt);
     const h = checkGraphHealth(db, root);
     expect(h.status).toBe("drift");
     expect(h.status === "drift" && h.staleFiles).toBe(1);
     expect(h.status === "drift" && h.totalFiles).toBeGreaterThan(0);
+
+    expect(updateFile(db, target, root)).toBe("skipped");
+    expect(checkGraphHealth(db, root)).toEqual({ status: "ok" });
   });
 
   it("グラフ登録済みファイルが削除されると drift に数える", () => {

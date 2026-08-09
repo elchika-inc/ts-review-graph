@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { analyzeProject } from "../src/analyzer.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import { randomUUID } from "node:crypto";
 
 const FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -103,6 +106,26 @@ describe("analyzeProject のパス相対化", () => {
     for (const e of result.edges) {
       expect(e.sourceId.startsWith("/")).toBe(false);
       expect(e.targetId.startsWith("/")).toBe(false);
+    }
+  });
+
+  it("プロジェクト内の symlink がルート外を指す場合は解析対象から除外する", () => {
+    const root = path.join(os.tmpdir(), `ts-rg-analyzer-root-${randomUUID()}`);
+    const outside = path.join(os.tmpdir(), `ts-rg-analyzer-outside-${randomUUID()}.ts`);
+    mkdirSync(root, { recursive: true });
+    writeFileSync(outside, "export const outside = 1;\n");
+    symlinkSync(outside, path.join(root, "escape.ts"));
+    writeFileSync(
+      path.join(root, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { target: "ES2022" }, include: ["*.ts"] })
+    );
+    try {
+      const result = analyzeProject(path.join(root, "tsconfig.json"), root);
+      expect(result.nodes.some((node) => node.file === "escape.ts")).toBe(false);
+      expect(result.fileHashes.has("escape.ts")).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { force: true });
     }
   });
 });

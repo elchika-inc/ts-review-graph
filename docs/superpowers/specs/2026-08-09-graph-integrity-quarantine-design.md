@@ -131,7 +131,8 @@ CREATE TABLE IF NOT EXISTS meta (
   （`nodes.file` / `file_hashes.file` に加え、`fileId` / `nodeId` への入力も含む）
 - 読み出し側（`blast.ts` / 各 MCP ツール）: 入力をルート相対に正規化してから照合する
 - 出力: ルート相対のまま返す（現行の表示と同じ見た目になる）
-- プロジェクトルートの導出: `dirname(DB_PATH)/..`（現行 `resolve-path.ts` と同一）
+- プロジェクトルートの導出: 起動時の `process.cwd()`。`--db` は DB の保存場所だけを変更し、
+  プロジェクトルートは変更しない
 - `resolve-path.ts` の役割を「トラバーサル検証 + ルート相対化」に変更する。
   既存のパストラバーサル検証・シンボリックリンク検証は維持する。
 
@@ -210,7 +211,10 @@ NOT IN GRAPH: src/new-file.ts — グラフ構築後に追加された可能性�
 | MCP のグラフ照会 6 ツール | `mismatch` → `isError: true` で拒否 ／ `drift` → 結果先頭に警告行 |
 | MCP `graph_status` | 復旧診断のため検疫対象外。壊れた DB でも件数・時刻を表示 |
 | CLI `status` | `health:` 行を追加し `OK` / `MISMATCH(理由)` / `STALE(N/M)` を表示 |
-| `pre-read.sh` | bash のまま。`meta.schema_version` を SQL で読み、不一致なら結果を出さず警告 1 行のみ出力 |
+| `pre-read.sh` | bash のまま。`meta.schema_version` を SQL で読み、不一致なら結果を出さず、旧形式警告と再構築案内のみを出力（現在は2行） |
+
+`pre-read.sh` は表示を20件に制限する。21件目を取得して打ち切りを検知し、上限超過時は
+一覧が不完全であると警告して `READ THESE FILES ONLY` / `SKIP all other files` を出さない。
 
 #### フックを Node 化しない判断（実測に基づく）
 
@@ -284,9 +288,9 @@ CLI の `install` が配線するのは MCP サーバーと `CLAUDE.md` への�
 導入する必要がある。したがって `pre-read.sh` は「空振りしていた」のではなく、
 **発火経路が一度も存在しなかった**。
 
-この事実により、フック関連の検証（DoneCriteria 6）は worktree 内の worker には
-観測不能である。worker の担当範囲はフックスクリプトの修正と静的検証（§7-5）までとし、
-実セッションでの発火確認は司令塔側の完了ゲートで行う。
+この事実により、プラグイン導入済み環境での end-to-end 発火は worktree 内の worker には
+観測不能である。worker はフックスクリプトの修正、静的検証、Task 10 の一時ローカルフック
+による入力契約の実測までを担当し、導入済みプラグインでの発火確認は後続ゲートで行う。
 
 プラグインの導入経路そのもの（ローカル marketplace として追加するか、
 `install` にプラグイン登録を含めるか）は本設計の範囲外とし、
@@ -294,13 +298,10 @@ CLI の `install` が配線するのは MCP サーバーと `CLAUDE.md` への�
 
 ### § 9. フック入力契約の確定（実装の最初のステップ）
 
-`pre-read.sh` は `CLAUDE_TOOL_INPUT_FILE_PATH` を参照しているが、
-stdin JSON 方式・環境変数方式のいずれでも出力が得られなかったため、
-**現行 Claude Code が PreToolUse フックへ何を渡すかは未確定である**。
-
-実装の最初のステップとして、フックへ渡される入力を実測して契約を確定し、
-その結果に基づいて入力取得部を実装する。契約が確定するまで
-`pre-read.sh` の他の修正（edge kind・相対パス化）は行わない。
+着手前の `pre-read.sh` は `CLAUDE_TOOL_INPUT_FILE_PATH` を参照しており、入力契約が
+未確定だった。Task 10 の一時ローカルフック実測により、現在の契約は stdin JSON の
+`tool_input.file_path` と確定済みである。正本は
+`packages/plugin/hooks/scripts/README.md` とする。
 
 ## 完了基準（DoneCriteria）
 

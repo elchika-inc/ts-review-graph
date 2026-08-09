@@ -85,11 +85,20 @@ export function updateFile(db: Db, filePath: string, projectRoot: string): "skip
   // projectRoot 自体が symlink の場合もあるため、両方を実体パスへ解決して比較する。
   toProjectRelative(realpathSync(projectRoot), realpathSync(absPath));
 
+  // 読み取り・解析中の変更を health が検出できるよう、観測開始時刻を保存する。
+  const observedAt = Date.now();
   const content = readFileSync(absPath, "utf-8");
   const newHash = sha256(content);
   const oldHash = getStoredHash(db, relPath);
 
-  if (oldHash === newHash) return "skipped";
+  if (oldHash === newHash) {
+    getUpdateStmts(db).upsertHash.run({
+      file: relPath,
+      hash: newHash,
+      updatedAt: observedAt,
+    });
+    return "skipped";
+  }
 
   // ts-morph 解析はトランザクション外（純粋な計算、DBアクセスなし）
   const project = new Project({ skipAddingFilesFromTsConfig: true });
@@ -201,7 +210,13 @@ export function updateFile(db: Db, filePath: string, projectRoot: string): "skip
 
       for (const candidate of candidates) {
         // 対象ノードが DB に存在すれば IMPORTS_FROM エッジを挿入
-        const targetNodeId = `${toProjectRelative(projectRoot, candidate)}::__file__`;
+        let targetNodeId: string;
+        try {
+          targetNodeId = `${toProjectRelative(projectRoot, candidate)}::__file__`;
+        } catch {
+          // フル build と同様、プロジェクトルート外の依存はグラフへ含めない。
+          continue;
+        }
         const exists = selectNodeExists.get(targetNodeId);
         if (exists) {
           insertEdge.run({
@@ -218,7 +233,7 @@ export function updateFile(db: Db, filePath: string, projectRoot: string): "skip
     upsertHash.run({
       file: relPath,
       hash: newHash,
-      updatedAt: Date.now(),
+      updatedAt: observedAt,
     });
   });
 

@@ -70,5 +70,5 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 
 ## Testing
 
-`packages/core` と `packages/mcp-server` に vitest テスト。`cli` は `--passWithNoTests`。
-テスト追加時は `packages/mcp-server/tests/` にインテグレーションテストを配置する。
+各パッケージに vitest テストがある。テスト追加時は対象パッケージの `tests/` に配置する。
+MCP のインテグレーションテストは `packages/mcp-server/tests/` に配置する。

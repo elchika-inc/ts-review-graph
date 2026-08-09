@@ -168,6 +168,24 @@ describe("updateFile", () => {
     }
   });
 
+  it("プロジェクト外への相対 import は当該 edge だけをスキップする", () => {
+    const outsideName = `ts-rg-outside-import-${randomUUID()}`;
+    const outsidePath = path.join(os.tmpdir(), `${outsideName}.ts`);
+    const appPath = path.join(tmpDir, "app.ts");
+    writeFileSync(outsidePath, "export const outside = 1;\n");
+    writeFileSync(
+      appPath,
+      `import { outside } from "../${outsideName}.js";\nexport const value = outside;\n`
+    );
+    try {
+      expect(updateFile(db, appPath, tmpDir)).toBe("updated");
+      const edges = db.prepare("SELECT * FROM edges WHERE source_id = ?").all("app.ts::__file__");
+      expect(edges).toEqual([]);
+    } finally {
+      rmSync(outsidePath, { force: true });
+    }
+  });
+
   it("削除後に同名ファイルが同じ内容で再作成されたらグラフを更新する", () => {
     const filePath = path.join(tmpDir, "e.ts");
     const content = "export function revived() {}";

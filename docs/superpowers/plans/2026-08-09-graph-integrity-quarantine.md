@@ -19,7 +19,7 @@
 - DB に保存するパスは **POSIX 区切り（`/`）のルート相対パス**。先頭に `./` を付けない
 - `SCHEMA_VERSION` の値は `"2"`（文字列）
 - `graph.db` はビルド成果物。**マイグレーションコードを書かない**
-- テストは `packages/core/tests/` と `packages/mcp-server/tests/` に配置し、既存の vitest スタイル（`/tmp/ts-review-graph-*-${randomUUID()}.db` を `beforeEach` で作り `afterEach` で `-wal` `-shm` ごと削除）に従う
+- テストは各パッケージの `tests/` に配置し、既存の vitest スタイル（`/tmp/ts-review-graph-*-${randomUUID()}.db` を `beforeEach` で作り `afterEach` で `-wal` `-shm` ごと削除）に従う
 - 検証コマンドに pipe を挟まない。`;` や `&&` で連結もしない（exit code が最後のコマンドのものになり個々の失敗が消える）
 
 ## 実装者への重要な注意
@@ -1127,15 +1127,13 @@ Expected: FAIL — `isError` が `undefined`
 
 `packages/mcp-server/src/tools/index.ts`。まず、既存の
 `process.env["TS_REVIEW_GRAPH_DB"]` からプロジェクトルートを導出するヘルパを用意する
-（`resolve-path.ts` と同じ導出規則: `dirname(DB_PATH)/..`、未設定なら `process.cwd()`）:
+（DB の保存場所は `--db` で独立に変更できるため、起動 cwd を使う）:
 
 ```ts
-import path from "node:path";
 import { checkGraphHealth } from "@elchika-inc/ts-review-graph-core";
 
 function getProjectRoot(): string {
-  const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
-  return dbPath ? path.resolve(path.dirname(dbPath), "..") : process.cwd();
+  return process.cwd();
 }
 
 // 検疫の対象外 — build_graph は復旧手段そのもの、graph_status は診断表示のため
@@ -1272,8 +1270,8 @@ Run: `grep -n "buildFullGraph\|updateFile" cli/src/index.ts`
 `update` コマンド内の `updateFile(db, ...)` も第 3 引数に `projectRoot` を追加する。
 
 各コマンドで `projectRoot` が未定義なら、そのコマンド内で
-`const projectRoot = process.cwd();` として定義すること
-（`--db` 指定時は `path.resolve(path.dirname(dbPath), "..")` を使う）。
+`const projectRoot = process.cwd();` として定義すること。`--db` は DB の保存場所だけを
+変更し、プロジェクトルートは変更しない。
 
 - [x] **Step 2: ビルドを通す**
 
@@ -1488,7 +1486,7 @@ Task 11 に着手しないこと。
 
 **背景:** `pre-read.sh` は `CLAUDE_TOOL_INPUT_FILE_PATH` を参照しているが、
 stdin JSON 方式・環境変数方式のいずれでも出力が得られなかった。
-**現行 Claude Code が PreToolUse フックへ何を渡すかは未確定である。**
+**着手前は、現行 Claude Code が PreToolUse フックへ何を渡すか未確定だった。**
 
 - [x] **Step 1: フックへの入力を丸ごと記録するプローブを書く**
 
@@ -1614,23 +1612,32 @@ const dbSchemaPath = path.join(repoRoot, "packages/core/src/db.ts");
 // 乖離を CI で検知する。
 describe("pre-read.sh と core の乖離検知", () => {
   const hook = readFileSync(hookPath, "utf-8");
+  const dbSrc = readFileSync(dbSchemaPath, "utf-8");
+
+  function schemaKinds(): string[] {
+    const value = dbSrc.match(/-- edges\.kind の取りうる値: ([A-Z_| ]+)/)?.[1];
+    expect(value).toBeDefined();
+    return value!.split("|").map((kind) => kind.trim());
+  }
 
   it("フックが参照する edge kind がスキーマの定義と矛盾しない", () => {
-    const VALID_KINDS = ["IMPORTS_FROM", "TYPED_BY", "IMPLEMENTS", "EXTENDS", "HAS_TEST"];
+    const validKinds = schemaKinds();
     // フック内の 'XXX' 形式のリテラルのうち、大文字とアンダースコアのみのものを抽出
     const literals = [...hook.matchAll(/'([A-Z][A-Z_]+)'/g)].map((m) => m[1]);
     const kindLiterals = literals.filter((l) => l !== "SELECT" && l !== "DISTINCT");
     for (const kind of kindLiterals) {
-      expect(VALID_KINDS).toContain(kind);
+      expect(validKinds).toContain(kind);
     }
   });
 
   it("VALID_KINDS が db.ts のスキーマコメントと一致する", () => {
-    const dbSrc = readFileSync(dbSchemaPath, "utf-8");
-    // db.ts に kind の一覧が記述されていることを確認する（陳腐化検知の起点）
-    for (const kind of ["IMPORTS_FROM", "TYPED_BY", "IMPLEMENTS", "EXTENDS"]) {
-      expect(dbSrc).toContain(kind);
-    }
+    expect(schemaKinds()).toEqual([
+      "IMPORTS_FROM",
+      "TYPED_BY",
+      "IMPLEMENTS",
+      "EXTENDS",
+      "HAS_TEST",
+    ]);
   });
 
   it("フックが schema_version を検査している", () => {
@@ -1652,7 +1659,7 @@ describe("pre-read.sh と core の乖離検知", () => {
 - [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/core && npx vitest run tests/hook-consistency.test.ts`
-Expected: FAIL — `expect(VALID_KINDS).toContain("CALLS")` で落ちる、
+Expected: FAIL — `expect(validKinds).toContain("CALLS")` で落ちる、
 および `schema_version` が見つからない
 
 - [x] **Step 3: pre-read.sh を書き換える**
@@ -1671,7 +1678,6 @@ set -euo pipefail
 
 SCHEMA_VERSION="2"
 DB_PATH="${TS_REVIEW_GRAPH_DB:-$(pwd)/.ts-review-graph/graph.db}"
-PROJECT_ROOT="$(cd "$(dirname "$DB_PATH")/.." && pwd)"
 
 # --- ファイルパスの取得（Task 10 の実測結果に置き換えること） ---
 INPUT_JSON="$(cat)"
@@ -1680,6 +1686,8 @@ FILE_PATH="$(printf '%s' "$INPUT_JSON" | sed -n 's/.*"file_path"[[:space:]]*:[[:
 if [ -z "$FILE_PATH" ] || [ ! -f "$DB_PATH" ]; then
   exit 0
 fi
+
+PROJECT_ROOT="$(pwd)"
 
 # --- 検疫: schema_version が一致しないグラフは使わない ---
 DB_VERSION="$(sqlite3 "$DB_PATH" "SELECT value FROM meta WHERE key = 'schema_version'" 2>/dev/null || true)"
@@ -1713,7 +1721,7 @@ RESULT=$(sqlite3 "$DB_PATH" "
   )
   SELECT DISTINCT n.file, b.reason FROM blast b JOIN nodes n ON n.id = b.node_id
   ORDER BY b.depth, n.file
-  LIMIT 20
+  LIMIT 21
 " 2>/dev/null || true)
 
 if [ -z "$RESULT" ]; then
@@ -1721,11 +1729,24 @@ if [ -z "$RESULT" ]; then
 fi
 
 echo "[ts-review-graph] Blast radius for: $REL_PATH"
-echo "READ THESE FILES ONLY:"
+RESULT_COUNT="$(printf '%s\n' "$RESULT" | awk 'NF { count++ } END { print count + 0 }')"
+TRUNCATED=0
+if [ "$RESULT_COUNT" -gt 20 ]; then
+  TRUNCATED=1
+  RESULT="$(printf '%s\n' "$RESULT" | sed -n '1,20p')"
+  echo "BLAST RADIUS TRUNCATED: more than 20 files. This list is not complete."
+  echo "SUGGESTED FILES (partial):"
+else
+  echo "READ THESE FILES ONLY:"
+fi
 while IFS='|' read -r file reason; do
   echo "  $file  [$reason]"
 done <<< "$RESULT"
-echo "SKIP all other files — not in blast radius."
+if [ "$TRUNCATED" -eq 1 ]; then
+  echo "Run the MCP query for the complete blast radius; do not skip files based on this partial list."
+else
+  echo "SKIP all other files — not in blast radius."
+fi
 ```
 
 **変更点:** 存在しない edge kind `CALLS` を削除、`schema_version` の検疫を追加、
@@ -1832,7 +1853,8 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 ```markdown
 ### Graph health checks
 
-Every graph-reading tool validates the graph before answering:
+The six graph-query tools (`get_minimal_context`, `get_impact`, `get_type_usages`,
+`get_test_coverage`, `query_graph`, and `find_cycles`) validate the graph before answering:
 
 | Condition | Behavior |
 |---|---|
@@ -1841,6 +1863,7 @@ Every graph-reading tool validates the graph before answering:
 | Known files changed on disk since the graph was built | Answers, prefixed with `⚠ STALE: N files changed` |
 
 `ts-review-graph status` reports the same verdict on a `health:` line.
+MCP `graph_status` remains quarantine-exempt so it can report raw diagnostics for a broken graph.
 
 Graph paths are stored relative to the project root, so `graph.db` survives
 moving the repository, working in a git worktree, or cloning on another machine.

@@ -142,6 +142,8 @@ moving the repository, working in a git worktree, or cloning on another machine.
 ```
 
 `graph.db` is a build artifact — added to `.gitignore` automatically. Share `config.json` with your team.
+Run CLI and MCP commands from the project root. `--db` changes only the database location;
+it does not change which directory is treated as the project root.
 
 ## How it works
 

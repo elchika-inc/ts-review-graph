@@ -3,7 +3,6 @@ import { realpathSync } from "node:fs";
 import { toProjectRelative } from "@elchika-inc/ts-review-graph-core";
 
 // 相対/絶対パスをプロジェクトルート相対のパスに変換する
-// DB_PATH = <root>/.ts-review-graph/graph.db なので dirname の親がルート
 // パストラバーサル（../../）や絶対パス指定によるプロジェクト外アクセスを防ぐ
 // シンボリックリンクバイパス対策: ファイルが存在する場合は realpathSync で検証する
 export function resolveFilePath(file: string): string {
@@ -12,11 +11,8 @@ export function resolveFilePath(file: string): string {
     throw new Error(`Path traversal detected: ${file}`);
   }
 
-  const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
-  // TS_REVIEW_GRAPH_DB 未設定時は process.cwd() をプロジェクトルートとして使用
-  const projectRoot = dbPath
-    ? path.resolve(path.dirname(dbPath), "..")
-    : process.cwd();
+  // DB の保存場所は --db で独立に変更できるため、起動 cwd をプロジェクトルートとする。
+  const projectRoot = path.resolve(process.cwd());
 
   const resolved = path.isAbsolute(file)
     ? path.normalize(file)

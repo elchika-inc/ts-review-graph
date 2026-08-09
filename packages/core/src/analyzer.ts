@@ -1,5 +1,6 @@
 import { Project, SourceFile } from "ts-morph";
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { toProjectRelative } from "./paths.js";
 
 export type NodeKind =
@@ -69,12 +70,8 @@ export function analyzeProject(tsconfigPath: string, projectRoot: string): Analy
     const absPath = sf.getFilePath();
     if (absPath.includes("node_modules")) continue;
     // プロジェクトルート外のファイル（tsconfig の references 等で入り込む）はグラフに含めない
-    let filePath: string;
-    try {
-      filePath = toProjectRelative(projectRoot, absPath);
-    } catch {
-      continue;
-    }
+    const filePath = toRelativeOrNull(projectRoot, absPath);
+    if (filePath === null) continue;
 
     const hash = createHash("sha256")
       .update(sf.getFullText())
@@ -147,11 +144,21 @@ export function analyzeProject(tsconfigPath: string, projectRoot: string): Analy
 }
 
 function toRelativeOrNull(projectRoot: string, filePath: string): string | null {
+  let relative: string;
   try {
-    return toProjectRelative(projectRoot, filePath);
+    relative = toProjectRelative(projectRoot, filePath);
   } catch {
     return null;
   }
+
+  const realRoot = realpathSync(projectRoot);
+  const realFile = realpathSync(filePath);
+  try {
+    toProjectRelative(realRoot, realFile);
+  } catch {
+    return null;
+  }
+  return relative;
 }
 
 function extractDeclarations(

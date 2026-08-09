@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { checkGraphHealth, openDb, SCHEMA_VERSION, writeMeta } from "@elchika-inc/ts-review-graph-core";
 import { registerTools } from "../src/tools/index.js";
 import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync, cpSync, utimesSync } from "node:fs";
@@ -22,6 +22,7 @@ let DEP_FILE: string;
 let TEST_FILE: string;
 
 let db: ReturnType<typeof openDb>;
+let cwdSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   TEST_PROJECT_ROOT = `/tmp/ts-rg-tools-test-${randomUUID()}`;
@@ -32,6 +33,7 @@ beforeEach(() => {
 
   // TS_REVIEW_GRAPH_DB を設定して resolveFilePath がプロジェクトルートを正しく解決できるようにする
   process.env["TS_REVIEW_GRAPH_DB"] = TEST_DB;
+  cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(TEST_PROJECT_ROOT);
 
   mkdirSync(TEST_PROJECT_ROOT, { recursive: true });
   writeFileSync(IMPL_FILE, "import './dep.js';\nexport const impl = 1;\n");
@@ -83,6 +85,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env["TS_REVIEW_GRAPH_DB"];
+  cwdSpy.mockRestore();
   db.close();
   rmSync(TEST_PROJECT_ROOT, { recursive: true, force: true });
 });
@@ -90,6 +93,16 @@ afterEach(() => {
 describe("registerTools", () => {
   it("primary fixture は健康なグラフである", () => {
     expect(checkGraphHealth(db, TEST_PROJECT_ROOT)).toEqual({ status: "ok" });
+  });
+
+  it("custom DB の配置階層にかかわらず cwd を projectRoot として使う", () => {
+    process.env["TS_REVIEW_GRAPH_DB"] = path.join(TEST_PROJECT_ROOT, "custom/deep/graph.db");
+    const result = registerTools(db, "get_minimal_context", {
+      changed_files: [IMPL_FILE],
+      mode: "review",
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.content[0].text).toContain("impl.ts");
   });
 
   it("ファイルが drift しても警告を先頭に付けて正常結果を返す", () => {
@@ -556,6 +569,7 @@ describe("build_graph", () => {
     cpSync(path.dirname(FIXTURE_TSCONFIG), buildRoot, { recursive: true });
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
+    cwdSpy.mockReturnValue(buildRoot);
 
     try {
       const result = registerTools(null, "build_graph", {
@@ -590,6 +604,7 @@ describe("build_graph", () => {
     const localTsconfig = path.join(buildRoot, "tsconfig.json");
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
+    cwdSpy.mockReturnValue(buildRoot);
 
     try {
       registerTools(null, "build_graph", { tsconfigs: [localTsconfig] });
@@ -633,6 +648,7 @@ describe("build_graph", () => {
 
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
+    cwdSpy.mockReturnValue(tmpRoot);
 
     try {
       // tsconfigs 引数なし → build_graph は config.json から読み込む
@@ -1003,6 +1019,9 @@ describe("検疫の適用", () => {
   it("build_graph は検疫の対象外（旧形式 DB でも拒否されない）", () => {
     const legacyPath = path.join(TEST_PROJECT_ROOT, ".ts-review-graph", `legacy-${randomUUID()}.db`);
     const legacyDb = openDb(legacyPath);
+    legacyDb.prepare(
+      "INSERT INTO nodes (id, kind, name, file, line, type_refs) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("/old/project/src/old.ts::__file__", "file", "old.ts", "/old/project/src/old.ts", 1, "[]");
     const previousDb = process.env["TS_REVIEW_GRAPH_DB"];
     try {
       process.env["TS_REVIEW_GRAPH_DB"] = legacyPath;
@@ -1020,6 +1039,15 @@ describe("検疫の適用", () => {
       expect(result.isError, result.content[0].text).not.toBe(true);
       expect(result.content[0].text).toContain("グラフ構築完了");
       expect(checkGraphHealth(legacyDb, TEST_PROJECT_ROOT)).toEqual({ status: "ok" });
+      const files = legacyDb.prepare("SELECT DISTINCT file FROM nodes").all() as { file: string }[];
+      expect(files.length).toBeGreaterThan(0);
+      expect(files.every((row) => !path.isAbsolute(row.file))).toBe(true);
+      const query = registerTools(legacyDb, "get_minimal_context", {
+        changed_files: [IMPL_FILE],
+        mode: "review",
+      });
+      expect(query.isError).not.toBe(true);
+      expect(query.content[0].text).toContain("impl.ts");
     } finally {
       if (previousDb === undefined) delete process.env["TS_REVIEW_GRAPH_DB"];
       else process.env["TS_REVIEW_GRAPH_DB"] = previousDb;

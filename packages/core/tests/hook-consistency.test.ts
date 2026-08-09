@@ -17,23 +17,32 @@ const dbSchemaPath = path.join(repoRoot, "packages/core/src/db.ts");
 // 乖離を CI で検知する。
 describe("pre-read.sh と core の乖離検知", () => {
   const hook = readFileSync(hookPath, "utf-8");
+  const dbSrc = readFileSync(dbSchemaPath, "utf-8");
+
+  function schemaKinds(): string[] {
+    const value = dbSrc.match(/-- edges\.kind の取りうる値: ([A-Z_| ]+)/)?.[1];
+    expect(value).toBeDefined();
+    return value!.split("|").map((kind) => kind.trim());
+  }
 
   it("フックが参照する edge kind がスキーマの定義と矛盾しない", () => {
-    const VALID_KINDS = ["IMPORTS_FROM", "TYPED_BY", "IMPLEMENTS", "EXTENDS", "HAS_TEST"];
+    const validKinds = schemaKinds();
     // フック内の 'XXX' 形式のリテラルのうち、大文字とアンダースコアのみのものを抽出
     const literals = [...hook.matchAll(/'([A-Z][A-Z_]+)'/g)].map((m) => m[1]);
     const kindLiterals = literals.filter((l) => l !== "SELECT" && l !== "DISTINCT");
     for (const kind of kindLiterals) {
-      expect(VALID_KINDS).toContain(kind);
+      expect(validKinds).toContain(kind);
     }
   });
 
   it("VALID_KINDS が db.ts のスキーマコメントと一致する", () => {
-    const dbSrc = readFileSync(dbSchemaPath, "utf-8");
-    // db.ts に kind の一覧が記述されていることを確認する（陳腐化検知の起点）
-    for (const kind of ["IMPORTS_FROM", "TYPED_BY", "IMPLEMENTS", "EXTENDS"]) {
-      expect(dbSrc).toContain(kind);
-    }
+    expect(schemaKinds()).toEqual([
+      "IMPORTS_FROM",
+      "TYPED_BY",
+      "IMPLEMENTS",
+      "EXTENDS",
+      "HAS_TEST",
+    ]);
   });
 
   it("フックが schema_version を検査している", () => {
@@ -66,6 +75,30 @@ describe("pre-read.sh と core の乖離検知", () => {
     } finally {
       for (const suffix of ["", "-wal", "-shm"]) {
         const file = legacyDb + suffix;
+        if (existsSync(file)) rmSync(file);
+      }
+    }
+
+    const currentDb = path.join(os.tmpdir(), `ts-rg-hook-current-${randomUUID()}.db`);
+    try {
+      const dependentSql = Array.from({ length: 21 }, (_, i) =>
+        `INSERT INTO nodes VALUES ('dep${i}.ts::__file__', 'file', 'dep${i}.ts', 'dep${i}.ts', 1, NULL, '[]'); INSERT INTO edges VALUES ('dep${i}.ts::__file__', 'src/a.ts::__file__', 'IMPORTS_FROM');`
+      ).join(" ");
+      execFileSync("sqlite3", [
+        currentDb,
+        `CREATE TABLE nodes (id TEXT, kind TEXT, name TEXT, file TEXT, line INTEGER, signature TEXT, type_refs TEXT); CREATE TABLE edges (source_id TEXT, target_id TEXT, kind TEXT); CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '${SCHEMA_VERSION}'); INSERT INTO nodes VALUES ('src/a.ts::__file__', 'file', 'a.ts', 'src/a.ts', 1, NULL, '[]'); ${dependentSql}`,
+      ]);
+      const output = execFileSync("bash", [hookPath], {
+        input,
+        encoding: "utf8",
+        env: { ...process.env, TS_REVIEW_GRAPH_DB: currentDb },
+      });
+      expect(output).toContain("TRUNCATED");
+      expect(output).not.toContain("READ THESE FILES ONLY");
+      expect(output).not.toContain("SKIP all other files");
+    } finally {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        const file = currentDb + suffix;
         if (existsSync(file)) rmSync(file);
       }
     }

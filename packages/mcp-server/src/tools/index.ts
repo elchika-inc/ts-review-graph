@@ -1,6 +1,5 @@
 import { checkGraphHealth } from "@elchika-inc/ts-review-graph-core";
 import type { Db } from "@elchika-inc/ts-review-graph-core";
-import path from "node:path";
 import { getMinimalContext } from "./get-minimal-context.js";
 import { getImpact } from "./get-impact.js";
 import { getTypeUsages } from "./get-type-usages.js";
@@ -12,8 +11,7 @@ import { findCycles } from "./find-cycles.js";
 import type { ToolResult } from "./types.js";
 
 function getProjectRoot(): string {
-  const dbPath = process.env["TS_REVIEW_GRAPH_DB"];
-  return dbPath ? path.resolve(path.dirname(dbPath), "..") : process.cwd();
+  return process.cwd();
 }
 
 // 検疫の対象外 — build_graph は復旧手段そのもの、graph_status は診断表示のため

@@ -231,9 +231,7 @@ program
   .action((opts: { tsconfig: string[]; db?: string }) => {
     const dbPath =
       opts.db ? path.resolve(opts.db) : path.join(process.cwd(), ".ts-review-graph/graph.db");
-    const projectRoot = opts.db
-      ? path.resolve(path.dirname(dbPath), "..")
-      : process.cwd();
+    const projectRoot = process.cwd();
 
     let tsconfigPaths: string[];
 
@@ -305,9 +303,7 @@ program
       typeof opts.db === "string"
         ? path.resolve(opts.db)
         : path.join(process.cwd(), ".ts-review-graph/graph.db");
-    const projectRoot = typeof opts.db === "string"
-      ? path.resolve(path.dirname(dbPath), "..")
-      : process.cwd();
+    const projectRoot = process.cwd();
 
     if (!existsSync(dbPath)) {
       console.error(
@@ -356,9 +352,7 @@ program
       typeof opts.db === "string"
         ? path.resolve(opts.db)
         : path.join(process.cwd(), ".ts-review-graph/graph.db");
-    const projectRoot = typeof opts.db === "string"
-      ? path.resolve(path.dirname(dbPath), "..")
-      : process.cwd();
+    const projectRoot = process.cwd();
 
     if (!existsSync(dbPath)) {
       console.error(
