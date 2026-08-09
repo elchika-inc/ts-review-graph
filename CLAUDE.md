@@ -73,3 +73,24 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 
 各パッケージに vitest テストがある。テスト追加時は対象パッケージの `tests/` に配置する。
 MCP のインテグレーションテストは `packages/mcp-server/tests/` に配置する。
+
+## TypeScript Dependency Graph (ts-review-graph MCP)
+
+### 必須: ソースコード参照前にコンテキスト取得
+
+コードレビュー・実装・デバッグで**ソースファイルを Read する前に**、必ず `get_minimal_context` を呼び出すこと。
+
+```
+mcp__ts-review-graph__get_minimal_context({
+  changed_files: ["src/foo.ts"],
+  mode: "review"   // review | implement | debug
+})
+```
+
+| mode | 使う場面 |
+|------|---------|
+| `review` | PR レビュー、コード調査 — REVERSE BFS (影響範囲) を返す |
+| `implement` | 新機能実装 — REVERSE + 深さ1 FORWARD (依存先) を返す |
+| `debug` | バグ調査 — REVERSE BFS (影響範囲) を返す |
+
+グラフが古い場合は `mcp__ts-review-graph__build_graph` で再構築する。

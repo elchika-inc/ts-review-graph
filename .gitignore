@@ -1,7 +1,6 @@
 node_modules/
 dist/
 *.tsbuildinfo
-.ts-review-graph/
 *.js.map
 
 # OS
@@ -26,3 +25,9 @@ coverage/
 .idea/
 *.swp
 *.swo
+
+# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)
+# SQLite は WAL モードのため -wal / -shm も生成される
+.ts-review-graph/graph.db
+.ts-review-graph/graph.db-wal
+.ts-review-graph/graph.db-shm

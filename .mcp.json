@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ts-review-graph": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@elchika-inc/ts-review-graph-mcp-server"
+      ]
+    }
+  }
+}
