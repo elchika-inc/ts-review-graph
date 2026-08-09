@@ -476,7 +476,7 @@ git commit -m "feat(core)!: analyzeProject が projectRoot 相対でパスを保
   - `updateFile(db: Db, filePath: string, projectRoot: string): "skipped" | "updated" | "deleted"`
   - `buildFullGraph(db: Db, tsconfigPaths: string[], projectRoot: string): void`
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/core/tests/updater.test.ts` の末尾に追記:
 
@@ -535,12 +535,12 @@ describe("updateFile のパス相対化", () => {
 import { readMeta, SCHEMA_VERSION } from "../src/meta.js";
 ```
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/core && npx vitest run tests/updater.test.ts`
 Expected: FAIL — 引数不足、または `file` が絶対パスのまま
 
-- [ ] **Step 3: updateFile を修正する**
+- [x] **Step 3: updateFile を修正する**
 
 `packages/core/src/updater.ts:69` を次のように変更する。
 **ディスクアクセス（`existsSync` / `readFileSync`）には絶対パスを使い、
@@ -576,7 +576,7 @@ import { toProjectRelative, toProjectAbsolute } from "./paths.js";
 import { writeMeta, SCHEMA_VERSION } from "./meta.js";
 ```
 
-- [ ] **Step 4: buildFullGraph を修正する**
+- [x] **Step 4: buildFullGraph を修正する**
 
 `packages/core/src/updater.ts:221` を次のように変更する:
 
@@ -604,7 +604,7 @@ export function buildFullGraph(db: Db, tsconfigPaths: string[], projectRoot: str
 ネスト時に SAVEPOINT へ自動的にフォールバックするため、外側トランザクション内から
 呼んで問題ない。`path` の import が無ければ `import path from "node:path";` を追加すること。
 
-- [ ] **Step 5: テストを実行して成功を確認する**
+- [x] **Step 5: テストを実行して成功を確認する**
 
 Run: `cd packages/core && npx vitest run`
 Expected: 全 PASS
@@ -613,7 +613,7 @@ Expected: 全 PASS
 呼び出し側に `projectRoot`（多くは `tmpDir` またはフィクスチャのルート）を追加して修正すること。
 `blast.test.ts` が絶対パスでクエリしている場合は、相対パスへ書き換える。
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add packages/core/src/updater.ts packages/core/tests/updater.test.ts packages/core/tests/blast.test.ts

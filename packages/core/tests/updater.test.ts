@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "../src/db.js";
 import { updateFile, buildFullGraph } from "../src/updater.js";
+import { readMeta, SCHEMA_VERSION } from "../src/meta.js";
 import { computeBlastRadius } from "../src/blast.js";
 import { rmSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 let db: ReturnType<typeof openDb>;
 let tmpDir: string;
@@ -32,9 +34,9 @@ describe("updateFile", () => {
     const filePath = path.join(tmpDir, "a.ts");
     writeFileSync(filePath, "export function foo() {}");
 
-    updateFile(db, filePath);
+    updateFile(db, filePath, tmpDir);
 
-    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all(filePath);
+    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all("a.ts");
     expect(nodes.length).toBeGreaterThan(0);
   });
 
@@ -42,8 +44,8 @@ describe("updateFile", () => {
     const filePath = path.join(tmpDir, "b.ts");
     writeFileSync(filePath, "export function bar() {}");
 
-    updateFile(db, filePath);
-    const result = updateFile(db, filePath); // 再実行
+    updateFile(db, filePath, tmpDir);
+    const result = updateFile(db, filePath, tmpDir); // 再実行
 
     expect(result).toBe("skipped");
   });
@@ -51,30 +53,30 @@ describe("updateFile", () => {
   it("内容が変わったら 'updated' を返しノードを更新する", () => {
     const filePath = path.join(tmpDir, "c.ts");
     writeFileSync(filePath, "export function baz() {}");
-    updateFile(db, filePath);
+    updateFile(db, filePath, tmpDir);
 
     // baz を削除した新しい内容
     writeFileSync(filePath, "// empty");
-    const result = updateFile(db, filePath);
+    const result = updateFile(db, filePath, tmpDir);
 
     expect(result).toBe("updated");
-    const node = db.prepare("SELECT * FROM nodes WHERE id = ?").get(`${filePath}::baz`);
+    const node = db.prepare("SELECT * FROM nodes WHERE id = ?").get("c.ts::baz");
     expect(node).toBeUndefined(); // baz ノードが消えている
   });
 
   it("ファイルが存在しない場合はノードとハッシュを削除して 'deleted' を返す", () => {
     const filePath = path.join(tmpDir, "d.ts");
     writeFileSync(filePath, "export function gone() {}");
-    updateFile(db, filePath);
+    updateFile(db, filePath, tmpDir);
 
     // ファイルを削除
     rmSync(filePath);
-    const result = updateFile(db, filePath);
+    const result = updateFile(db, filePath, tmpDir);
 
     expect(result).toBe("deleted");
-    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all(filePath);
+    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all("d.ts");
     expect(nodes.length).toBe(0);
-    const hash = db.prepare("SELECT * FROM file_hashes WHERE file = ?").get(filePath);
+    const hash = db.prepare("SELECT * FROM file_hashes WHERE file = ?").get("d.ts");
     expect(hash).toBeUndefined();
   });
 
@@ -82,9 +84,9 @@ describe("updateFile", () => {
     const filePath = path.join(tmpDir, "vars.ts");
     writeFileSync(filePath, "export const myConst = 42;");
 
-    updateFile(db, filePath);
+    updateFile(db, filePath, tmpDir);
 
-    const node = db.prepare("SELECT * FROM nodes WHERE id = ?").get(`${filePath}::myConst`);
+    const node = db.prepare("SELECT * FROM nodes WHERE id = ?").get("vars.ts::myConst");
     expect(node).toBeTruthy();
     expect((node as any).kind).toBe("variable");
   });
@@ -96,13 +98,13 @@ describe("updateFile", () => {
     writeFileSync(appPath, `import { libFn } from "./lib.js";\nexport function useLib() { return libFn(); }`);
 
     // まず lib.ts を DB に登録して lib.ts::__file__ ノードを作成
-    updateFile(db, libPath);
+    updateFile(db, libPath, tmpDir);
     // 次に app.ts を更新（lib.ts::__file__ が DB に存在するので IMPORTS_FROM エッジが生成される）
-    updateFile(db, appPath);
+    updateFile(db, appPath, tmpDir);
 
     const edge = db
       .prepare("SELECT * FROM edges WHERE source_id = ? AND target_id = ? AND kind = 'IMPORTS_FROM'")
-      .get(`${appPath}::__file__`, `${libPath}::__file__`);
+      .get("app.ts::__file__", "lib.ts::__file__");
     expect(edge).toBeTruthy();
   });
 
@@ -130,7 +132,7 @@ describe("updateFile", () => {
       })
     );
 
-    buildFullGraph(db, [tsconfigPath]);
+    buildFullGraph(db, [tsconfigPath], tmpDir);
     const fullEdges = db
       .prepare("SELECT source_id, target_id, kind FROM edges WHERE kind = 'IMPORTS_FROM' ORDER BY source_id, target_id")
       .all();
@@ -138,22 +140,22 @@ describe("updateFile", () => {
     const incrementalDbPath = `/tmp/ts-review-graph-updater-incremental-${randomUUID()}.db`;
     const incrementalDb = openDb(incrementalDbPath);
     try {
-      updateFile(incrementalDb, targetPath);
-      updateFile(incrementalDb, namedPath);
-      updateFile(incrementalDb, barrelPath);
-      updateFile(incrementalDb, consumerPath);
+      updateFile(incrementalDb, targetPath, tmpDir);
+      updateFile(incrementalDb, namedPath, tmpDir);
+      updateFile(incrementalDb, barrelPath, tmpDir);
+      updateFile(incrementalDb, consumerPath, tmpDir);
 
       const incrementalEdges = incrementalDb
         .prepare("SELECT source_id, target_id, kind FROM edges WHERE kind = 'IMPORTS_FROM' ORDER BY source_id, target_id")
         .all();
       expect(fullEdges).toContainEqual({
-        source_id: `${barrelPath}::__file__`,
-        target_id: `${targetPath}::__file__`,
+        source_id: "index.ts::__file__",
+        target_id: "target.ts::__file__",
         kind: "IMPORTS_FROM",
       });
       expect(fullEdges).toContainEqual({
-        source_id: `${barrelPath}::__file__`,
-        target_id: `${namedPath}::__file__`,
+        source_id: "index.ts::__file__",
+        target_id: "named.ts::__file__",
         kind: "IMPORTS_FROM",
       });
       expect(incrementalEdges).toEqual(fullEdges);
@@ -170,18 +172,18 @@ describe("updateFile", () => {
     const filePath = path.join(tmpDir, "e.ts");
     const content = "export function revived() {}";
     writeFileSync(filePath, content);
-    updateFile(db, filePath);
+    updateFile(db, filePath, tmpDir);
 
     // ファイルを削除してハッシュをクリア
     rmSync(filePath);
-    updateFile(db, filePath);
+    updateFile(db, filePath, tmpDir);
 
     // 同じ内容で再作成 → ハッシュがないので 'updated' になる
     writeFileSync(filePath, content);
-    const result = updateFile(db, filePath);
+    const result = updateFile(db, filePath, tmpDir);
 
     expect(result).toBe("updated");
-    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all(filePath);
+    const nodes = db.prepare("SELECT * FROM nodes WHERE file = ?").all("e.ts");
     expect(nodes.length).toBeGreaterThan(0);
   });
 });
@@ -206,10 +208,10 @@ describe("buildFullGraph", () => {
       })
     );
 
-    buildFullGraph(db, [tsconfigPath]);
+    buildFullGraph(db, [tsconfigPath], tmpDir);
 
-    const affectedFiles = computeBlastRadius(db, targetPath, 2).map((node) => node.file);
-    expect(affectedFiles).toContain(consumerPath);
+    const affectedFiles = computeBlastRadius(db, "target.ts", 2).map((node) => node.file);
+    expect(affectedFiles).toContain("consumer.ts");
   });
 
   it("複数 tsconfig のノードを単一 DB にマージする", () => {
@@ -241,7 +243,7 @@ describe("buildFullGraph", () => {
     buildFullGraph(db, [
       path.join(dir1, "tsconfig.json"),
       path.join(dir2, "tsconfig.json"),
-    ]);
+    ], os.tmpdir());
 
     // 両方のファイルノードが DB に存在する
     const aNode = db
@@ -260,7 +262,7 @@ describe("buildFullGraph", () => {
   });
 
   it("空配列を渡した場合はノードを挿入しない", () => {
-    buildFullGraph(db, []);
+    buildFullGraph(db, [], tmpDir);
     const count = (
       db.prepare("SELECT COUNT(*) as c FROM nodes").get() as { c: number }
     ).c;
@@ -301,7 +303,7 @@ describe("buildFullGraph", () => {
         buildFullGraph(db, [
           path.join(appDir, "tsconfig.json"),
           path.join(libDir, "tsconfig.json"),
-        ])
+        ], parentDir)
       ).not.toThrow();
 
       const appNode = db.prepare("SELECT * FROM nodes WHERE name = 'appFn'").get();
@@ -313,5 +315,52 @@ describe("buildFullGraph", () => {
     } finally {
       rmSync(parentDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("buildFullGraph の meta 書き込み", () => {
+  it("meta に schema_version / tsconfigs / built_at / built_root を記録する", () => {
+    const fixtureRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/simple");
+    const before = Date.now();
+    buildFullGraph(db, [path.join(fixtureRoot, "tsconfig.json")], fixtureRoot);
+    const m = readMeta(db);
+    expect(m).not.toBeNull();
+    expect(m!.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(m!.tsconfigs).toEqual(["tsconfig.json"]);
+    expect(m!.builtAt).toBeGreaterThanOrEqual(before);
+    expect(m!.builtRoot).toBe(fixtureRoot);
+  });
+
+  it("nodes.file が相対パスで保存される", () => {
+    const fixtureRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "fixtures/simple");
+    buildFullGraph(db, [path.join(fixtureRoot, "tsconfig.json")], fixtureRoot);
+    const files = db.prepare("SELECT DISTINCT file FROM nodes").all() as { file: string }[];
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      expect(path.isAbsolute(f.file)).toBe(false);
+    }
+  });
+});
+
+describe("updateFile のパス相対化", () => {
+  it("絶対パスを渡しても file_hashes には相対パスで記録される", () => {
+    const filePath = path.join(tmpDir, "a.ts");
+    writeFileSync(filePath, "export function foo() {}");
+
+    updateFile(db, filePath, tmpDir);
+
+    const rows = db.prepare("SELECT file FROM file_hashes").all() as { file: string }[];
+    expect(rows).toEqual([{ file: "a.ts" }]);
+  });
+
+  it("削除されたファイルは相対パスのノードを消す", () => {
+    const filePath = path.join(tmpDir, "a.ts");
+    writeFileSync(filePath, "export function foo() {}");
+    updateFile(db, filePath, tmpDir);
+    rmSync(filePath);
+
+    expect(updateFile(db, filePath, tmpDir)).toBe("deleted");
+    const rows = db.prepare("SELECT file FROM nodes WHERE file = 'a.ts'").all();
+    expect(rows).toEqual([]);
   });
 });
