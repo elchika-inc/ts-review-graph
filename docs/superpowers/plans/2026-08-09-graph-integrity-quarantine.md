@@ -1784,6 +1784,7 @@ fi
 - `ts-review-graph update` を呼んでいる場合、CLI 側は相対/絶対どちらでも
   受け付けるようになっている（Task 4 で `toProjectAbsolute` / `toProjectRelative` を通すため）ので変更不要
 - 存在しない edge kind を参照していれば削除する
+- 増分更新エラーは stderr へ診断を出し、advisory hook 自体は exit 0 で継続する
 
 変更内容を Step 6 のコミットメッセージに明記すること。
 
@@ -1884,13 +1885,14 @@ The six graph-query tools (`get_minimal_context`, `get_impact`, `get_type_usages
 |---|---|
 | `meta` table missing, or `schema_version` mismatch | **Refuses** — rebuild required |
 | `config.json` tsconfigs differ from the recorded set (or `config.json` missing) | **Refuses** — rebuild required |
-| Known files changed on disk since the graph was built | Answers, prefixed with `⚠ STALE: N files changed` |
+| Known files whose disk mtime is newer than their last full or incremental graph update, or which are missing from disk | Answers, prefixed with `⚠ STALE: N files changed` |
 
 `ts-review-graph status` reports the same verdict on a `health:` line.
 MCP `graph_status` remains quarantine-exempt so it can report raw diagnostics for a broken graph.
 
-Graph paths are stored relative to the project root, so `graph.db` survives
-moving the repository, working in a git worktree, or cloning on another machine.
+Graph paths are stored relative to the project root, so a `graph.db` moved or copied
+with its working tree remains usable at the new root. Because `graph.db` is ignored,
+a normal clone or newly created worktree does not contain it and requires `install` or `build`.
 ```
 
 - [x] **Step 4: CHANGELOG.md にエントリを追加する**

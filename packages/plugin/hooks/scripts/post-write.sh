@@ -16,5 +16,11 @@ if [[ "$FILE_PATH" != *.ts ]] && [[ "$FILE_PATH" != *.tsx ]]; then
   exit 0
 fi
 
-# ts-review-graph CLI で増分更新
-npx ts-review-graph update "$FILE_PATH" --db "$DB_PATH" 2>/dev/null || true
+# ts-review-graph CLI で増分更新。失敗は surface するが、advisory hook 自体は継続する。
+if ! UPDATE_OUTPUT="$(npx ts-review-graph update "$FILE_PATH" --db "$DB_PATH" 2>&1)"; then
+  echo "[ts-review-graph] 増分更新に失敗しました: $UPDATE_OUTPUT" >&2
+  exit 0
+fi
+if [ -n "$UPDATE_OUTPUT" ]; then
+  printf '%s\n' "$UPDATE_OUTPUT"
+fi

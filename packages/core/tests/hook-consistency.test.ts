@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
@@ -10,6 +10,7 @@ import { SCHEMA_VERSION } from "../src/meta.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const hookPath = path.join(repoRoot, "packages/plugin/hooks/scripts/pre-read.sh");
+const postWriteHookPath = path.join(repoRoot, "packages/plugin/hooks/scripts/post-write.sh");
 const dbSchemaPath = path.join(repoRoot, "packages/core/src/db.ts");
 
 // フックは bash + sqlite3 で DB を直接照会するため、core の TypeScript 実装とは
@@ -99,6 +100,28 @@ describe("pre-read.sh と core の乖離検知", () => {
       const resultLines = output.split("\n").filter((line) => line.startsWith("  "));
       expect(resultLines).toHaveLength(20);
       expect(new Set(resultLines.map((line) => line.trim().split(/\s{2}/)[0])).size).toBe(20);
+
+      const fakeBin = path.join(os.tmpdir(), `ts-rg-hook-bin-${randomUUID()}`);
+      mkdirSync(fakeBin);
+      const fakeNpx = path.join(fakeBin, "npx");
+      writeFileSync(fakeNpx, "#!/bin/sh\necho simulated update failure >&2\nexit 7\n");
+      chmodSync(fakeNpx, 0o755);
+      try {
+        const updateResult = spawnSync("bash", [postWriteHookPath], {
+          input,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}:${process.env["PATH"] ?? ""}`,
+            TS_REVIEW_GRAPH_DB: currentDb,
+          },
+        });
+        expect(updateResult.status).toBe(0);
+        expect(updateResult.stderr).toContain("増分更新に失敗しました");
+        expect(updateResult.stderr).toContain("simulated update failure");
+      } finally {
+        rmSync(fakeBin, { recursive: true, force: true });
+      }
     } finally {
       for (const suffix of ["", "-wal", "-shm"]) {
         const file = currentDb + suffix;
