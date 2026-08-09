@@ -46,7 +46,7 @@
   - `toProjectRelative(projectRoot: string, filePath: string): string`
   - `toProjectAbsolute(projectRoot: string, relPath: string): string`
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/core/tests/paths.test.ts`:
 
@@ -88,12 +88,12 @@ describe("toProjectAbsolute", () => {
 });
 ```
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/core && npx vitest run tests/paths.test.ts`
 Expected: FAIL — `Failed to resolve import "../src/paths.js"`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/core/src/paths.ts`:
 
@@ -121,12 +121,12 @@ export function toProjectAbsolute(projectRoot: string, relPath: string): string 
 }
 ```
 
-- [ ] **Step 4: テストを実行して成功を確認する**
+- [x] **Step 4: テストを実行して成功を確認する**
 
 Run: `cd packages/core && npx vitest run tests/paths.test.ts`
 Expected: PASS（7 件）
 
-- [ ] **Step 5: エクスポートを追加する**
+- [x] **Step 5: エクスポートを追加する**
 
 `packages/core/src/index.ts` の末尾に追記:
 
@@ -134,7 +134,7 @@ Expected: PASS（7 件）
 export { toProjectRelative, toProjectAbsolute } from "./paths.js";
 ```
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add packages/core/src/paths.ts packages/core/tests/paths.test.ts packages/core/src/index.ts

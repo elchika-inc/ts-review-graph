@@ -5,3 +5,4 @@ export type { GraphNode, GraphEdge, AnalysisResult, NodeKind } from "./analyzer.
 export { computeBlastRadius, computeForwardDeps, DEPTH_FOR_MODE } from "./blast.js";
 export type { BlastNode } from "./blast.js";
 export { updateFile, buildFullGraph } from "./updater.js";
+export { toProjectRelative, toProjectAbsolute } from "./paths.js";
