@@ -12,8 +12,8 @@ const FIXTURE_TSCONFIG = new URL(
 ).pathname;
 
 // プロジェクトルートを擬似的に作成し、DB パスを nested に設定する。
-// resolveFilePath は TS_REVIEW_GRAPH_DB から projectRoot を逆算するため、
-// DB が <projectRoot>/.ts-review-graph/graph.db に配置される形にする。
+// resolveFilePath は process.cwd() を projectRoot として使い、DB の保存場所とは分離する。
+// beforeEach で cwd をこの一時プロジェクトへ固定する。
 // randomUUID() で並列実行時のパス衝突を防ぐ。
 let TEST_PROJECT_ROOT: string;
 let TEST_DB: string;
