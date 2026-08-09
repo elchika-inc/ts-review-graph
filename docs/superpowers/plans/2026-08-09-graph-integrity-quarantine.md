@@ -160,7 +160,7 @@ git commit -m "feat(core): プロジェクトルート相対パス変換ユー�
   - `writeMeta(db: Db, meta: GraphMeta): void`
   - `readMeta(db: Db): GraphMeta | null`（`meta` が空、または必須キー欠落なら `null`）
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/core/tests/meta.test.ts`:
 
@@ -232,12 +232,12 @@ describe("meta", () => {
 });
 ```
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/core && npx vitest run tests/meta.test.ts`
 Expected: FAIL — `Failed to resolve import "../src/meta.js"`
 
-- [ ] **Step 3: DDL に meta テーブルを追加する**
+- [x] **Step 3: DDL に meta テーブルを追加する**
 
 `packages/core/src/db.ts` の `DDL` テンプレートリテラル内、`CREATE TABLE IF NOT EXISTS file_hashes (...)` の直後に追記:
 
@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 ```
 
-- [ ] **Step 4: meta.ts を実装する**
+- [x] **Step 4: meta.ts を実装する**
 
 `packages/core/src/meta.ts`:
 
@@ -310,12 +310,12 @@ export function readMeta(db: Db): GraphMeta | null {
 }
 ```
 
-- [ ] **Step 5: テストを実行して成功を確認する**
+- [x] **Step 5: テストを実行して成功を確認する**
 
 Run: `cd packages/core && npx vitest run tests/meta.test.ts`
 Expected: PASS（5 件）
 
-- [ ] **Step 6: db.test.ts のテーブル存在チェックを更新する**
+- [x] **Step 6: db.test.ts のテーブル存在チェックを更新する**
 
 `packages/core/tests/db.test.ts` の「テーブルが存在する」テストに 1 行追加:
 
@@ -323,7 +323,7 @@ Expected: PASS（5 件）
       expect(tables).toContain("meta");
 ```
 
-- [ ] **Step 7: エクスポートを追加してテスト全体を通す**
+- [x] **Step 7: エクスポートを追加してテスト全体を通す**
 
 `packages/core/src/index.ts` に追記:
 
@@ -335,7 +335,7 @@ export type { GraphMeta } from "./meta.js";
 Run: `cd packages/core && npx vitest run`
 Expected: 全 PASS
 
-- [ ] **Step 8: コミット**
+- [x] **Step 8: コミット**
 
 ```bash
 git add packages/core/src/db.ts packages/core/src/meta.ts packages/core/src/index.ts packages/core/tests/meta.test.ts packages/core/tests/db.test.ts

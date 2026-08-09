@@ -6,3 +6,5 @@ export { computeBlastRadius, computeForwardDeps, DEPTH_FOR_MODE } from "./blast.
 export type { BlastNode } from "./blast.js";
 export { updateFile, buildFullGraph } from "./updater.js";
 export { toProjectRelative, toProjectAbsolute } from "./paths.js";
+export { writeMeta, readMeta, SCHEMA_VERSION } from "./meta.js";
+export type { GraphMeta } from "./meta.js";
