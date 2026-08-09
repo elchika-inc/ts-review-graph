@@ -11,6 +11,10 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildMcpServerEntry } from "./mcp-entry.js";
+import {
+  formatNpxAbiMismatchGuidance,
+  updateGraphGitignore,
+} from "./install-support.js";
 
 const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
 const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
@@ -70,28 +74,19 @@ program
       }
     }
 
-    // 3. .gitignore を graph.db のみ除外に変更
+    // 3. .gitignore で SQLite DB と WAL/SHM を除外する
     const gitignorePath = path.join(projectRoot, ".gitignore");
-    if (existsSync(gitignorePath)) {
-      try {
-        let content = readFileSync(gitignorePath, "utf-8");
-        if (content.includes("# ts-review-graph\n.ts-review-graph/\n")) {
-          content = content.replace(
-            "# ts-review-graph\n.ts-review-graph/\n",
-            "# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db\n"
-          );
-          writeFileSync(gitignorePath, content);
-          console.log("✓ .gitignore を更新しました（graph.db のみ除外）");
-        } else if (!content.includes(".ts-review-graph/graph.db")) {
-          appendFileSync(
-            gitignorePath,
-            "\n# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db\n"
-          );
-          console.log("✓ .gitignore に .ts-review-graph/graph.db を追記しました");
-        }
-      } catch (err) {
-        console.warn(`⚠ .gitignore の更新に失敗しました: ${err instanceof Error ? err.message : err}`);
+    try {
+      const current = existsSync(gitignorePath)
+        ? readFileSync(gitignorePath, "utf-8")
+        : "";
+      const update = updateGraphGitignore(current);
+      if (update.changed) {
+        writeFileSync(gitignorePath, update.content);
+        console.log("✓ .gitignore に graph.db / WAL / SHM の除外を設定しました");
       }
+    } catch (err) {
+      console.warn(`⚠ .gitignore の更新に失敗しました: ${err instanceof Error ? err.message : err}`);
     }
 
     // 4. tsconfig リストを解決
@@ -136,7 +131,11 @@ program
     try {
       db = openDb(dbPath);
     } catch (err) {
-      console.error("⚠ データベースを開けませんでした:", err instanceof Error ? err.message : err);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("⚠ データベースを開けませんでした:", message);
+      for (const line of formatNpxAbiMismatchGuidance(message)) {
+        console.error(`  ${line}`);
+      }
       process.exit(1);
     }
     try {

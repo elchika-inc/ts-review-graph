@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-08-09
+
+### Security
+- `install` が生成する `.mcp.json` で MCP server を CLI と同じ version に固定し、セッション起動時に未確認の `latest` や旧 reader が選ばれる経路を閉じた
+
+### Fixed
+- SQLite の `graph.db-wal` / `graph.db-shm` も `.gitignore` へ冪等に追加し、WAL 関連ファイルが誤ってコミットされる問題を修正した
+- npx cache 内のネイティブ module が Node ABI 不一致で失敗した場合、エラーから抽出できた `_npx/<hash>` の削除コマンドを表示し、抽出不能時は一般的な cache 削除案内に留めるようにした
+
+### Changed
+- MCP server の修正版は自動受信されなくなった。version を更新するには、更新後の CLI version で初回と同じ `--tsconfig` / `--db` option を指定し、`install` を再実行する必要がある
+
 ## [0.5.0] - 2026-08-09
 
 ### Breaking Changes
