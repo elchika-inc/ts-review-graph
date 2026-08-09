@@ -102,6 +102,21 @@ SKIP: 1170 other files — not in blast radius
 | `build_graph` | `tsconfigs[]` (optional) | Rebuild the graph |
 | `graph_status` | — | Graph statistics |
 
+### Graph health checks
+
+Every graph-reading tool validates the graph before answering:
+
+| Condition | Behavior |
+|---|---|
+| `meta` table missing, or `schema_version` mismatch | **Refuses** — rebuild required |
+| `config.json` tsconfigs differ from the recorded set (or `config.json` missing) | **Refuses** — rebuild required |
+| Known files changed on disk since the graph was built | Answers, prefixed with `⚠ STALE: N files changed` |
+
+`ts-review-graph status` reports the same verdict on a `health:` line.
+
+Graph paths are stored relative to the project root, so `graph.db` survives
+moving the repository, working in a git worktree, or cloning on another machine.
+
 ### BFS depth by mode
 
 | Mode | REVERSE | FORWARD | Use case |

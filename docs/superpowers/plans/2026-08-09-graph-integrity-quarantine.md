@@ -1752,7 +1752,7 @@ git commit -m "fix(plugin): pre-read.sh の検疫・相対パス対応と乖離�
 - Modify: `CLAUDE.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] **Step 1: 全パッケージのビルド・テスト・型チェックを個別に実行する**
+- [x] **Step 1: 全パッケージのビルド・テスト・型チェックを個別に実行する**
 
 `&&` や `;` で連結しないこと（exit code が最後のコマンドのものになり個々の失敗が消える）。
 
@@ -1765,7 +1765,7 @@ Expected: exit 0、全テスト PASS
 Run: `pnpm lint`
 Expected: exit 0
 
-- [ ] **Step 2: CLAUDE.md の Database Schema 節を更新する**
+- [x] **Step 2: CLAUDE.md の Database Schema 節を更新する**
 
 `CLAUDE.md` の「Database Schema」節を次のように更新する:
 
@@ -1790,7 +1790,7 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 `meta` 不在の DB は旧形式として fail-closed で拒否される。
 ```
 
-- [ ] **Step 3: README.md に検疫の説明を追加する**
+- [x] **Step 3: README.md に検疫の説明を追加する**
 
 `README.md` の「MCP tools」表の直後に節を追加する:
 
@@ -1811,7 +1811,7 @@ Graph paths are stored relative to the project root, so `graph.db` survives
 moving the repository, working in a git worktree, or cloning on another machine.
 ```
 
-- [ ] **Step 4: CHANGELOG.md にエントリを追加する**
+- [x] **Step 4: CHANGELOG.md にエントリを追加する**
 
 既存の書式に合わせて `## [0.5.0]` の節を先頭付近に追加する。
 `### Breaking Changes` として以下を明記する:
@@ -1822,12 +1822,12 @@ moving the repository, working in a git worktree, or cloning on another machine.
 
 `### Fixed` として、リポジトリ移動でグラフが無言で全件ミスしていた問題を記載する。
 
-- [ ] **Step 5: 検証コマンドを再実行する**
+- [x] **Step 5: 検証コマンドを再実行する**
 
 Run: `pnpm test`
 Expected: exit 0
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```bash
 git add README.md CLAUDE.md CHANGELOG.md

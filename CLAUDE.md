@@ -37,12 +37,22 @@ pnpm monorepo。4 パッケージで構成:
 
 ## Database Schema
 
-SQLite 3 テーブル: `nodes`、`edges`、`file_hashes`
+SQLite 4 テーブル: `nodes`、`edges`、`file_hashes`、`meta`
 
 Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 
-**重要**: `edges.target_id` に意図的に REFERENCES を付けていない。増分更新でファイルを削除するとき、
-`source_id` が削除ファイルのエッジだけを CASCADE で消し、逆方向 (`B→A`) エッジは残す必要があるため。
+**重要**: `nodes.file` と `nodes.id` はプロジェクトルート相対の POSIX パスで保存する。
+絶対パスで保存すると、リポジトリの移動・worktree・別マシンでのクローンでグラフが
+無言で全件ミスする（実障害あり）。相対化は `analyzeProject` / `updateFile` の入口
+1 箇所（`toProjectRelative`）に集約している。
+
+**重要**: `edges.target_id` に意図的に REFERENCES を付けていない。増分更新でファイルを
+削除するとき、`source_id` が削除ファイルのエッジだけを CASCADE で消し、
+逆方向 (`B→A`) エッジは残す必要があるため。
+
+**重要**: `meta` テーブルはグラフの構築条件（`schema_version` / `tsconfigs` /
+`built_at` / `built_root`）を記録する。`checkGraphHealth()` がこれを使って検疫する。
+`meta` 不在の DB は旧形式として fail-closed で拒否される。
 
 ## Gotchas
 
