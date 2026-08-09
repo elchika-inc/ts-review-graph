@@ -358,7 +358,7 @@ git commit -m "feat(core): グラフ構築条件を記録する meta テーブ�
 - Produces: `analyzeProject(tsconfigPath: string, projectRoot: string): AnalysisResult`
   （**第 2 引数 `projectRoot` が必須の破壊的変更**）
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/core/tests/analyzer.test.ts` の末尾に追記:
 
@@ -406,12 +406,12 @@ describe("analyzeProject のパス相対化", () => {
 `__dirname` が ESM で使えない場合は既存テストの流儀に合わせる
 （既存テストがフィクスチャをどう参照しているかを確認し、同じ方法を使う）。
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/core && npx vitest run tests/analyzer.test.ts`
 Expected: FAIL — 引数不足の型エラー、または `nodes.file` が絶対パスのまま
 
-- [ ] **Step 3: analyzeProject を修正する**
+- [x] **Step 3: analyzeProject を修正する**
 
 `packages/core/src/analyzer.ts`:
 
@@ -450,12 +450,12 @@ export function analyzeProject(tsconfigPath: string, projectRoot: string): Analy
 import { toProjectRelative } from "./paths.js";
 ```
 
-- [ ] **Step 4: テストを実行して成功を確認する**
+- [x] **Step 4: テストを実行して成功を確認する**
 
 Run: `cd packages/core && npx vitest run tests/analyzer.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add packages/core/src/analyzer.ts packages/core/tests/analyzer.test.ts
