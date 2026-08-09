@@ -1,7 +1,8 @@
 import path from "node:path";
 import { realpathSync } from "node:fs";
+import { toProjectRelative } from "@elchika-inc/ts-review-graph-core";
 
-// 相対/絶対パスをプロジェクトルート基準の絶対パスに変換する
+// 相対/絶対パスをプロジェクトルート相対のパスに変換する
 // DB_PATH = <root>/.ts-review-graph/graph.db なので dirname の親がルート
 // パストラバーサル（../../）や絶対パス指定によるプロジェクト外アクセスを防ぐ
 // シンボリックリンクバイパス対策: ファイルが存在する場合は realpathSync で検証する
@@ -37,11 +38,13 @@ export function resolveFilePath(file: string): string {
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("Path traversal")) throw e;
     // ENOENT: ファイルが存在しない場合はシンボリックリンクバイパス不可 — 許容
-    if (e instanceof Error && (e as NodeJS.ErrnoException).code === "ENOENT") return resolved;
+    if (e instanceof Error && (e as NodeJS.ErrnoException).code === "ENOENT") {
+      return toProjectRelative(projectRoot, resolved);
+    }
     // EACCES / ELOOP 等: シンボリックリンク検証が不可 — fail-closed
     const code = (e as NodeJS.ErrnoException).code ?? "unknown";
     throw new Error(`Path safety check failed (${code}): ${file}`);
   }
 
-  return resolved;
+  return toProjectRelative(projectRoot, resolved);
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { openDb } from "@elchika-inc/ts-review-graph-core";
 import { registerTools } from "../src/tools/index.js";
-import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync } from "node:fs";
+import { rmSync, existsSync, symlinkSync, mkdirSync, writeFileSync, cpSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -35,30 +35,30 @@ beforeEach(() => {
 
   db = openDb(TEST_DB);
 
-  // impl.ts ノード (絶対パス)
+  // impl.ts ノード（DB はプロジェクトルート相対パス）
   db.prepare(
     "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-  ).run("impl::__file__", "file", "impl.ts", IMPL_FILE, 1, "[]");
+  ).run("impl.ts::__file__", "file", "impl.ts", "impl.ts", 1, "[]");
 
-  // dep.ts ノード（impl.ts が import している、絶対パス）
+  // dep.ts ノード（impl.ts が import している、DB は相対パス）
   db.prepare(
     "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-  ).run("dep::__file__", "file", "dep.ts", DEP_FILE, 1, "[]");
+  ).run("dep.ts::__file__", "file", "dep.ts", "dep.ts", 1, "[]");
 
-  // impl.test.ts ノード (絶対パス)
+  // impl.test.ts ノード（DB はプロジェクトルート相対パス）
   db.prepare(
     "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-  ).run("test::__file__", "test", "impl.test.ts", TEST_FILE, 1, "[]");
+  ).run("impl.test.ts::__file__", "test", "impl.test.ts", "impl.test.ts", 1, "[]");
 
   // HAS_TEST: impl → test
   db.prepare(
     "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
-  ).run("impl::__file__", "test::__file__", "HAS_TEST");
+  ).run("impl.ts::__file__", "impl.test.ts::__file__", "HAS_TEST");
 
   // IMPORTS_FROM: impl → dep (impl.ts が dep.ts を import)
   db.prepare(
     "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
-  ).run("impl::__file__", "dep::__file__", "IMPORTS_FROM");
+  ).run("impl.ts::__file__", "dep.ts::__file__", "IMPORTS_FROM");
 });
 
 afterEach(() => {
@@ -255,7 +255,7 @@ describe("get_impact", () => {
     expect(result.isError).toBeFalsy();
     // ヘッダー行 "Impact of ..." を除いた本文に変更ファイル自身のパスが現れないことを確認
     const body = result.content[0].text.split("\n").slice(1).join("\n");
-    expect(body).not.toContain(IMPL_FILE);
+    expect(body).not.toContain("impl.ts");
   });
 
   it("get_impact: 依存元がないファイルは 'No dependents found' を返す", () => {
@@ -284,8 +284,8 @@ describe("get_impact", () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("```mermaid\nflowchart TD");
-    expect(result.content[0].text).toContain(`n0[\"${DEP_FILE}\"]`);
-    expect(result.content[0].text).toContain(`n1[\"${IMPL_FILE}\"]`);
+    expect(result.content[0].text).toContain('n0["dep.ts"]');
+    expect(result.content[0].text).toContain('n1["impl.ts"]');
     expect(result.content[0].text).toContain("n1 -->|IMPORTS_FROM| n0");
     expect(result.content[0].text).toContain("class n0 target;");
     expect(result.content[0].text).toContain("classDef target");
@@ -299,10 +299,10 @@ describe("get_impact", () => {
       "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
     );
     for (let i = 0; i < 50; i++) {
-      const id = `impact-${i}::__file__`;
-      const file = path.join(TEST_PROJECT_ROOT, `impact-${i}.ts`);
+      const id = `impact-${i}.ts::__file__`;
+      const file = `impact-${i}.ts`;
       insertNode.run(id, "file", `impact-${i}.ts`, file, 1, "[]");
-      insertEdge.run(id, "dep::__file__", "IMPORTS_FROM");
+      insertEdge.run(id, "dep.ts::__file__", "IMPORTS_FROM");
     }
 
     const result = registerTools(db, "get_impact", {
@@ -319,13 +319,13 @@ describe("get_impact", () => {
   });
 
   it("get_impact: mermaid のファイル名でコードフェンスを閉じさせない", () => {
-    const maliciousFile = path.join(TEST_PROJECT_ROOT, "evil```mermaid.ts");
+    const maliciousFile = "evil```mermaid.ts";
     db.prepare(
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-    ).run("malicious::__file__", "file", "evil```mermaid.ts", maliciousFile, 1, "[]");
+    ).run("evil```mermaid.ts::__file__", "file", "evil```mermaid.ts", maliciousFile, 1, "[]");
     db.prepare(
       "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
-    ).run("malicious::__file__", "dep::__file__", "IMPORTS_FROM");
+    ).run("evil```mermaid.ts::__file__", "dep.ts::__file__", "IMPORTS_FROM");
 
     const result = registerTools(db, "get_impact", {
       changed_file: DEP_FILE,
@@ -355,10 +355,10 @@ describe("get_type_usages", () => {
   });
 
   it("get_type_usages: type_refs にマッチするノードを返す", () => {
-    const typedFile = path.join(TEST_PROJECT_ROOT, "typed.ts");
+    const typedFile = "typed.ts";
     db.prepare(
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-    ).run("typed::__file__", "file", "typed.ts", typedFile, 1, '["types.ts::MonitorConfig","string"]');
+    ).run("typed.ts::__file__", "file", "typed.ts", typedFile, 1, '["types.ts::MonitorConfig","string"]');
 
     const result = registerTools(db, "get_type_usages", { type_name: "MonitorConfig" });
     expect(result.isError).toBeFalsy();
@@ -380,10 +380,10 @@ describe("get_type_usages", () => {
   });
 
   it("get_type_usages: _ を含む型名でも正しくマッチする（過剰エスケープなし）", () => {
-    const underscoreFile = path.join(TEST_PROJECT_ROOT, "underscore_typed.ts");
+    const underscoreFile = "underscore_typed.ts";
     db.prepare(
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-    ).run("underscore::__file__", "file", "underscore_typed.ts", underscoreFile, 1, '["types.ts::My_Type"]');
+    ).run("underscore_typed.ts::__file__", "file", "underscore_typed.ts", underscoreFile, 1, '["types.ts::My_Type"]');
     const result = registerTools(db, "get_type_usages", { type_name: "My_Type" });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("My_Type");
@@ -447,13 +447,13 @@ describe("find_cycles", () => {
   it("IMPORTS_FROM の循環を回転違いで重複せず返す", () => {
     db.prepare(
       "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
-    ).run("dep::__file__", "impl::__file__", "IMPORTS_FROM");
+    ).run("dep.ts::__file__", "impl.ts::__file__", "IMPORTS_FROM");
 
     const result = registerTools(db, "find_cycles", {});
 
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toContain("Circular import cycles (1)");
-    expect(result.content[0].text).toContain(`${IMPL_FILE} -> ${DEP_FILE} -> ${IMPL_FILE}`);
+    expect(result.content[0].text).toContain("impl.ts -> dep.ts -> impl.ts");
   });
 
   it("循環がない場合は明示的なメッセージを返す", () => {
@@ -464,21 +464,21 @@ describe("find_cycles", () => {
   });
 
   it("max_cycles で件数を制限し打ち切りを明示する", () => {
-    const firstFile = path.join(TEST_PROJECT_ROOT, "first.ts");
-    const secondFile = path.join(TEST_PROJECT_ROOT, "second.ts");
+    const firstFile = "first.ts";
+    const secondFile = "second.ts";
     db.prepare(
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-    ).run("first::__file__", "file", "first.ts", firstFile, 1, "[]");
+    ).run("first.ts::__file__", "file", "first.ts", firstFile, 1, "[]");
     db.prepare(
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
-    ).run("second::__file__", "file", "second.ts", secondFile, 1, "[]");
+    ).run("second.ts::__file__", "file", "second.ts", secondFile, 1, "[]");
     const insertEdge = db.prepare(
       "INSERT OR REPLACE INTO edges (source_id, target_id, kind) VALUES (?,?,?)"
     );
-    insertEdge.run("impl::__file__", "dep::__file__", "IMPORTS_FROM");
-    insertEdge.run("dep::__file__", "impl::__file__", "IMPORTS_FROM");
-    insertEdge.run("first::__file__", "second::__file__", "IMPORTS_FROM");
-    insertEdge.run("second::__file__", "first::__file__", "IMPORTS_FROM");
+    insertEdge.run("impl.ts::__file__", "dep.ts::__file__", "IMPORTS_FROM");
+    insertEdge.run("dep.ts::__file__", "impl.ts::__file__", "IMPORTS_FROM");
+    insertEdge.run("first.ts::__file__", "second.ts::__file__", "IMPORTS_FROM");
+    insertEdge.run("second.ts::__file__", "first.ts::__file__", "IMPORTS_FROM");
 
     const result = registerTools(db, "find_cycles", { max_cycles: 1 });
 
@@ -573,8 +573,9 @@ describe("build_graph", () => {
     const configPath = path.join(configDir, "config.json");
     const buildDbPath = path.join(configDir, "graph.db");
 
+    cpSync(path.dirname(FIXTURE_TSCONFIG), tmpRoot, { recursive: true });
     mkdirSync(configDir, { recursive: true });
-    writeFileSync(configPath, JSON.stringify({ tsconfigs: [FIXTURE_TSCONFIG] }));
+    writeFileSync(configPath, JSON.stringify({ tsconfigs: ["tsconfig.json"] }));
 
     const prevDb = process.env["TS_REVIEW_GRAPH_DB"];
     process.env["TS_REVIEW_GRAPH_DB"] = buildDbPath;
@@ -772,8 +773,8 @@ describe("query_graph 出力フォーマット", () => {
     const text = result.content[0].text;
     // 新フォーマット: /path/dep.ts::dep.ts  [file]
     expect(text).toContain("dep.ts");
-    // 旧フォーマット (id  [kind]  file) は含まない — id は "dep::__file__" のような値
-    expect(text).not.toMatch(/dep::__file__\s+\[/);
+    // 旧フォーマット (id  [kind]  file) は含まない — id は "dep.ts::__file__" のような値
+    expect(text).not.toMatch(/dep\.ts::__file__\s+\[/);
     expect(text).not.toContain("__file__");
   });
 
@@ -806,8 +807,8 @@ describe("get_type_usages MAX_TYPE_RESULTS 打ち切り", () => {
       "INSERT OR REPLACE INTO nodes (id, kind, name, file, line, type_refs) VALUES (?,?,?,?,?,?)"
     );
     for (let i = 0; i < 501; i++) {
-      const f = path.join(TEST_PROJECT_ROOT, `type_test_${i}.ts`);
-      insert.run(`type_test_${i}::__file__`, "file", `type_test_${i}.ts`, f, 1, '["types.ts::MyUniqueType"]');
+      const f = `type_test_${i}.ts`;
+      insert.run(`type_test_${i}.ts::__file__`, "file", `type_test_${i}.ts`, f, 1, '["types.ts::MyUniqueType"]');
     }
 
     const result = registerTools(db, "get_type_usages", { type_name: "MyUniqueType" });

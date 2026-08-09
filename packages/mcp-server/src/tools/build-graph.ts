@@ -85,7 +85,7 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
 
   try {
     const startMs = Date.now();
-    buildFullGraph(db, tsconfigPaths);
+    buildFullGraph(db, tsconfigPaths, cwd);
     const elapsed = Date.now() - startMs;
 
     // グラフ構築成功後の統計取得 — 失敗してもグラフ構築成功は確定なので別 catch で区別する

@@ -137,7 +137,7 @@ program
       process.exit(1);
     }
     try {
-      buildFullGraph(db!, existingPaths);
+      buildFullGraph(db!, existingPaths, projectRoot);
     } catch (err) {
       console.error("⚠ グラフ構築に失敗しました:", err instanceof Error ? err.message : err);
       db?.close();
@@ -230,9 +230,11 @@ program
   )
   .option("--db <path>", "graph.db のパス")
   .action((opts: { tsconfig: string[]; db?: string }) => {
-    const projectRoot = process.cwd();
     const dbPath =
-      opts.db ?? path.join(projectRoot, ".ts-review-graph/graph.db");
+      opts.db ? path.resolve(opts.db) : path.join(process.cwd(), ".ts-review-graph/graph.db");
+    const projectRoot = opts.db
+      ? path.resolve(path.dirname(dbPath), "..")
+      : process.cwd();
 
     let tsconfigPaths: string[];
 
@@ -269,7 +271,7 @@ program
     }
     try {
       const startMs = Date.now();
-      buildFullGraph(db!, existingPaths);
+      buildFullGraph(db!, existingPaths, projectRoot);
       const elapsed = Date.now() - startMs;
       console.log(`グラフ構築完了 (${elapsed}ms)`);
       try {
@@ -298,8 +300,12 @@ program
   .option("--db <path>", "graph.db のパス")
   .action((file: string, opts) => {
     const dbPath =
-      (opts.db as string | undefined) ??
-      path.join(process.cwd(), ".ts-review-graph/graph.db");
+      typeof opts.db === "string"
+        ? path.resolve(opts.db)
+        : path.join(process.cwd(), ".ts-review-graph/graph.db");
+    const projectRoot = typeof opts.db === "string"
+      ? path.resolve(path.dirname(dbPath), "..")
+      : process.cwd();
 
     if (!existsSync(dbPath)) {
       console.error(
@@ -322,7 +328,7 @@ program
       process.exit(1);
     }
     try {
-      const result = updateFile(db!, resolvedFile);
+      const result = updateFile(db!, resolvedFile, projectRoot);
       if (result === "skipped") {
         console.log(`スキップ（変更なし）: ${file}`);
       } else if (result === "deleted") {

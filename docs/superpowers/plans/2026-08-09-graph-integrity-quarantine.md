@@ -892,7 +892,7 @@ git commit -m "feat(core): グラフ整合性の検疫 API checkGraphHealth を�
 - Consumes: `toProjectRelative` (Task 1), `buildFullGraph` (Task 4)
 - Produces: `resolveFilePath(file: string): string` は**ルート相対パスを返す**ように変更（関数名は据え置き、戻り値の意味が変わる）
 
-- [ ] **Step 1: 失敗するテストを書く（本障害の直接の回帰テスト）**
+- [x] **Step 1: 失敗するテストを書く（本障害の直接の回帰テスト）**
 
 `packages/mcp-server/tests/portability.test.ts`:
 
@@ -957,7 +957,7 @@ describe("グラフの可搬性（リポジトリ移動シミュレーション�
 });
 ```
 
-- [ ] **Step 2: テストを実行して失敗を確認する**
+- [x] **Step 2: テストを実行して失敗を確認する**
 
 Run: `cd packages/mcp-server && npx vitest run tests/portability.test.ts`
 Expected: PASS する可能性がある。**PASS した場合は Task 3-4 が正しく効いている証拠なので、
@@ -966,7 +966,7 @@ Expected: PASS する可能性がある。**PASS した場合は Task 3-4 が正
 
 > このテストは「先に失敗させる」ことより「回帰を固定する」ことが目的である。
 
-- [ ] **Step 3: resolveFilePath を相対パス返却に変更する**
+- [x] **Step 3: resolveFilePath を相対パス返却に変更する**
 
 `packages/mcp-server/src/tools/resolve-path.ts` の最後の 2 行（`return resolved;` の直前と `return resolved;`）を変更する。
 既存のパストラバーサル検証・シンボリックリンク検証はすべて維持したまま、
@@ -994,7 +994,7 @@ import { toProjectRelative } from "@elchika-inc/ts-review-graph-core";
 コメントの「プロジェクトルート基準の絶対パスに変換する」を
 「プロジェクトルート相対のパスに変換する」に修正すること。
 
-- [ ] **Step 4: build_graph ツールを新シグネチャに合わせる**
+- [x] **Step 4: build_graph ツールを新シグネチャに合わせる**
 
 Task 4 で `buildFullGraph` が 3 引数になったため、`packages/mcp-server/src/tools/build-graph.ts:88`
 がコンパイルエラーになる。同ファイルは既に `cwd` としてプロジェクトルートを算出している
@@ -1008,7 +1008,7 @@ Task 4 で `buildFullGraph` が 3 引数になったため、`packages/mcp-serve
 `buildFullGraph` 内の `toProjectRelative(projectRoot, p)` は正しく相対化できる。
 **`loadTsconfigPaths` は変更しないこと。**
 
-- [ ] **Step 5: 呼び出し側を確認する**
+- [x] **Step 5: 呼び出し側を確認する**
 
 Run: `grep -rn "resolveFilePath" packages/mcp-server/src`
 
@@ -1016,7 +1016,7 @@ Run: `grep -rn "resolveFilePath" packages/mcp-server/src`
 戻り値を `existsSync` / `readFileSync` などのファイル I/O に渡している箇所があれば、
 `toProjectAbsolute(projectRoot, ...)` を通すこと。
 
-- [ ] **Step 6: テストを実行して成功を確認する**
+- [x] **Step 6: テストを実行して成功を確認する**
 
 Run: `pnpm build`
 Expected: exit 0（`build-graph.ts` のコンパイルエラーが解消していること）
@@ -1024,7 +1024,7 @@ Expected: exit 0（`build-graph.ts` のコンパイルエラーが解消して�
 Run: `cd packages/mcp-server && npx vitest run`
 Expected: 全 PASS
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add packages/mcp-server/src/tools/resolve-path.ts packages/mcp-server/src/tools/build-graph.ts packages/mcp-server/tests/portability.test.ts
@@ -1235,7 +1235,7 @@ git commit -m "feat(mcp): 不整合グラフを fail-closed で拒否しドリ�
 - Consumes: `checkGraphHealth` (Task 5), `buildFullGraph` / `updateFile` の新シグネチャ (Task 4)
 - Produces: なし（CLI の出力のみ変化）
 
-- [ ] **Step 1: buildFullGraph / updateFile の呼び出しを修正する**
+- [x] **Step 1: buildFullGraph / updateFile の呼び出しを修正する**
 
 Run: `grep -n "buildFullGraph\|updateFile" cli/src/index.ts`
 
@@ -1247,7 +1247,7 @@ Run: `grep -n "buildFullGraph\|updateFile" cli/src/index.ts`
 `const projectRoot = process.cwd();` として定義すること
 （`--db` 指定時は `path.resolve(path.dirname(dbPath), "..")` を使う）。
 
-- [ ] **Step 2: ビルドを通す**
+- [x] **Step 2: ビルドを通す**
 
 Run: `pnpm build`
 Expected: 型エラーなしで成功
