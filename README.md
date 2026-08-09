@@ -41,6 +41,8 @@ npx @elchika-inc/ts-review-graph@latest install --tsconfig tsconfig.json
 
 Config is saved to `.ts-review-graph/config.json`, MCP server is registered in `.mcp.json`, and usage instructions are appended to `CLAUDE.md`. Restart Claude Code and the MCP server connects automatically.
 
+生成される `.mcp.json` は、MCP server を `install` に使用した CLI と同じ version に固定します。これにより、セッション起動時に古い graph reader や未確認の将来の `latest` release が選ばれることを防ぎます。トレードオフとして修正版は自動受信されないため、ts-review-graph の更新時は利用する CLI version で `install` を再実行してください。
+
 ### Monorepo (multiple tsconfigs)
 
 ```bash
@@ -142,7 +144,7 @@ a normal clone or newly created worktree does not contain it and requires `insta
 }
 ```
 
-`graph.db` is a build artifact — added to `.gitignore` automatically. Share `config.json` with your team.
+`graph.db` はビルド成果物です。`graph.db`・`graph.db-wal`・`graph.db-shm` は自動的に `.gitignore` へ追加されます。`config.json` はチームで共有してください。
 Run CLI and MCP commands from the project root. `--db` changes only the database location;
 it does not change which directory is treated as the project root.
 

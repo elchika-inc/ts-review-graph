@@ -1,13 +1,24 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildMcpServerEntry } from "../src/mcp-entry.js";
 
+const packagePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
+const cliVersion = (JSON.parse(readFileSync(packagePath, "utf-8")) as { version: string }).version;
+const versionedServerPackage = `@elchika-inc/ts-review-graph-mcp-server@${cliVersion}`;
+
 describe("buildMcpServerEntry", () => {
-  it("既定の DB パスなら env を含めない", () => {
+  it("CLI 自身と同じバージョンの MCP サーバーへ固定する", () => {
     const entry = buildMcpServerEntry("/repo", "/repo/.ts-review-graph/graph.db");
     expect(entry).toEqual({
       command: "npx",
-      args: ["-y", "@elchika-inc/ts-review-graph-mcp-server"],
+      args: ["-y", versionedServerPackage],
     });
+  });
+
+  it("既定の DB パスなら env を含めない", () => {
+    const entry = buildMcpServerEntry("/repo", "/repo/.ts-review-graph/graph.db");
     expect("env" in entry).toBe(false);
   });
 
