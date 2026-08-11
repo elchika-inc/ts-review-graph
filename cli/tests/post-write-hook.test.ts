@@ -91,7 +91,7 @@ describe("plugin hooks", () => {
       expect(result.status, result.stderr).toBe(0);
       expect(readFileSync(fixture.capturePath, "utf-8").trim().split("\n")).toEqual([
         "-y",
-        "@elchika-inc/ts-review-graph@0.5.1",
+        "@elchika-inc/ts-review-graph@0.5.2",
         "update",
         "src/main.ts",
         "--db",

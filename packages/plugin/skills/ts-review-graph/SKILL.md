@@ -1,7 +1,7 @@
 ---
 name: ts-review-graph
 description: TypeScript プロジェクトのコードレビュー・実装・デバッグ時に自動起動。変更ファイルのブラスト半径を計算し、Claude が読むべき最小ファイルセットを提示する。
-version: 0.5.1
+version: 0.5.2
 ---
 
 ## When This Skill Activates
@@ -46,5 +46,5 @@ SKIP: 2,704 other files — not in blast radius
 
 If the graph is not built (tool returns "未構築"), suggest running:
 ```
-npx -y @elchika-inc/ts-review-graph@0.5.1 build
+npx -y @elchika-inc/ts-review-graph@0.5.2 build
 ```
