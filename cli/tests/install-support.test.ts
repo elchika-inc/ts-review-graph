@@ -66,7 +66,7 @@ was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`
 
     expect(formatNpxAbiMismatchGuidance(message)).toEqual([
       "ネイティブモジュールの Node ABI が一致していません。",
-      "次の npx キャッシュを削除してから install を再試行してください:",
+      "次の npx キャッシュを削除してから、同じコマンドを再実行してください:",
       "rm -rf -- '/Users/test user/.npm/_npx/08af52269914770e'",
     ]);
   });
@@ -76,7 +76,7 @@ was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`
 
     expect(formatNpxAbiMismatchGuidance(message)).toEqual([
       "ネイティブモジュールの Node ABI が一致していません。",
-      "該当する npx キャッシュを削除してから install を再試行してください。",
+      "該当する npx キャッシュを削除してから、同じコマンドを再実行してください。",
     ]);
   });
 
@@ -85,7 +85,7 @@ was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`
 
     expect(formatNpxAbiMismatchGuidance(message)).toEqual([
       "ネイティブモジュールの Node ABI が一致していません。",
-      "該当する npx キャッシュを削除してから install を再試行してください。",
+      "該当する npx キャッシュを削除してから、同じコマンドを再実行してください。",
     ]);
   });
 

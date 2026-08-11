@@ -66,6 +66,8 @@ describe("DB open の ABI 診断", () => {
       expect(result.stderr).toContain(
         "rm -rf -- '/Users/test/.npm/_npx/08af52269914770e'"
       );
+      expect(result.stderr).toContain("同じコマンドを再実行してください");
+      expect(result.stderr).not.toContain("install を再試行");
     });
 
     it(`${name} が非 ABI error では cache 削除案内を表示しない`, () => {
