@@ -18,7 +18,8 @@ export function updateGraphGitignore(content: string): GitignoreUpdate {
     graphIgnoreLines.every(
       (target) => lines.filter((line) => line === target).length === 1
     ) &&
-    !lines.includes(".ts-review-graph/");
+    !lines.includes(".ts-review-graph/") &&
+    !lines.includes(".ts-review-graph/graph.db*");
 
   if (complete) {
     return { content, changed: false };

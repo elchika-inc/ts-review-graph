@@ -86,6 +86,19 @@ describe("Claude Code plugin の配布契約", () => {
     expect(pluginFiles.join("\n")).not.toMatch(/\bnpx\s+(?:-y\s+)?ts-review-graph\b/);
   });
 
+  it("両 hook が同じ path normalization helper を使う", () => {
+    const helperPath = path.join(pluginRoot, "hooks/scripts/path-normalization.sh");
+    const sourceLine = 'source "$SCRIPT_DIR/path-normalization.sh"';
+
+    expect(existsSync(helperPath)).toBe(true);
+    expect(readFileSync(path.join(pluginRoot, "hooks/scripts/pre-read.sh"), "utf-8")).toContain(
+      sourceLine
+    );
+    expect(readFileSync(path.join(pluginRoot, "hooks/scripts/post-write.sh"), "utf-8")).toContain(
+      sourceLine
+    );
+  });
+
   it("hook manifest が Claude Code plugin の入れ子構造に従う", () => {
     const hookManifest = readJson<{
       hooks?: Record<string, Array<{ matcher: string; hooks: Array<{ timeout: number }> }>>;

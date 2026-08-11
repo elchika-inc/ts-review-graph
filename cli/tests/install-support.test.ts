@@ -49,6 +49,14 @@ describe("updateGraphGitignore", () => {
       changed: true,
     });
   });
+
+  it("canonical 3行と graph.db glob が同居しても glob を除去する", () => {
+    const current = `node_modules\n\n${expectedIgnoreBlock}.ts-review-graph/graph.db*\n`;
+    expect(updateGraphGitignore(current)).toEqual({
+      content: `node_modules\n\n${expectedIgnoreBlock}`,
+      changed: true,
+    });
+  });
 });
 
 describe("formatNpxAbiMismatchGuidance", () => {

@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/hooks/scripts/pre-read.sh",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/pre-read.sh\"",
             "timeout": 5
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/hooks/scripts/post-write.sh",
+            "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/post-write.sh\"",
             "timeout": 10
           }
         ]

@@ -5,6 +5,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+source "$SCRIPT_DIR/path-normalization.sh"
+
 SCHEMA_VERSION="2"
 DB_PATH="${TS_REVIEW_GRAPH_DB:-$(pwd)/.ts-review-graph/graph.db}"
 
@@ -15,8 +18,6 @@ FILE_PATH="$(printf '%s' "$INPUT_JSON" | sed -n 's/.*"file_path"[[:space:]]*:[[:
 if [ -z "$FILE_PATH" ] || [ ! -f "$DB_PATH" ]; then
   exit 0
 fi
-
-PROJECT_ROOT="$(pwd)"
 
 # --- 検疫: schema_version が一致しないグラフは使わない ---
 if ! META_EXISTS="$(sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'" 2>&1)"; then
@@ -39,14 +40,9 @@ if [ "$DB_VERSION" != "$SCHEMA_VERSION" ]; then
 fi
 
 # --- パスをプロジェクトルート相対へ正規化する ---
-case "$FILE_PATH" in
-  /*) REL_PATH="${FILE_PATH#"$PROJECT_ROOT"/}" ;;
-  *)  REL_PATH="$FILE_PATH" ;;
-esac
-# ルート外だった場合（置換が起きず絶対パスのまま）は何もしない
-case "$REL_PATH" in
-  /*) exit 0 ;;
-esac
+if ! REL_PATH="$(project_relative_path "$FILE_PATH")"; then
+  exit 0
+fi
 
 # シングルクォートを SQL エスケープ（' → ''）してインジェクションを防ぐ
 SAFE_PATH="${REL_PATH//\'/\'\'}"
