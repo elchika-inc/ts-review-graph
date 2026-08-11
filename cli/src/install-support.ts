@@ -18,7 +18,8 @@ export function updateGraphGitignore(content: string): GitignoreUpdate {
     graphIgnoreLines.every(
       (target) => lines.filter((line) => line === target).length === 1
     ) &&
-    !lines.includes(".ts-review-graph/");
+    !lines.includes(".ts-review-graph/") &&
+    !lines.includes(".ts-review-graph/graph.db*");
 
   if (complete) {
     return { content, changed: false };
@@ -28,6 +29,7 @@ export function updateGraphGitignore(content: string): GitignoreUpdate {
     "# ts-review-graph",
     gitignoreHeader,
     ".ts-review-graph/",
+    ".ts-review-graph/graph.db*",
     ...graphIgnoreLines,
   ]);
   const retained = lines.filter((line) => !obsoleteLines.has(line));
@@ -64,13 +66,13 @@ export function formatNpxAbiMismatchGuidance(message: string): string[] {
   if (!cacheDirectory) {
     return [
       "ネイティブモジュールの Node ABI が一致していません。",
-      "該当する npx キャッシュを削除してから install を再試行してください。",
+      "該当する npx キャッシュを削除してから、同じコマンドを再実行してください。",
     ];
   }
 
   return [
     "ネイティブモジュールの Node ABI が一致していません。",
-    "次の npx キャッシュを削除してから install を再試行してください:",
+    "次の npx キャッシュを削除してから、同じコマンドを再実行してください:",
     `rm -rf -- ${shellQuote(cacheDirectory)}`,
   ];
 }

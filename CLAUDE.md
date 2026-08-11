@@ -60,7 +60,7 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 - **ESM**: 全パッケージ `"type": "module"`。import パスは `.js` 拡張子必須 (TypeScript でも `import ... from './foo.js'`)
 - **workspace:***: パッケージ間依存は `"workspace:*"` で指定。publish 前に `pnpm publish` で自動解決される
 - **Node.js 20+**: `better-sqlite3` のネイティブビルドに必要
-- **3 package は lockstep version**: core・MCP server・CLI は常に同一 version で publish する。`install` は CLI 自身の version で `.mcp.json` の MCP server を固定する
+- **公開物は lockstep version**: core・MCP server・CLI・Claude Code plugin は同一 version で公開する。plugin は `packages/plugin/.claude-plugin/plugin.json` を version の正本とし、marketplace と plugin MCP 設定との一致をテストで固定する。CLI の `install` は CLI 自身の version で `.mcp.json` の MCP server を固定する
 - **SQLite DB は .gitignore**: `graph.db`・`graph.db-wal`・`graph.db-shm` はビルドアーティファクト。`config.json` だけコミットする
 
 ## Plugin Structure

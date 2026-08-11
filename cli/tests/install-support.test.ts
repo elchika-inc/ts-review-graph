@@ -41,6 +41,22 @@ describe("updateGraphGitignore", () => {
       changed: true,
     });
   });
+
+  it("graph.db glob を孤立させず3ファイルの ignoreへ置き換える", () => {
+    const current = `node_modules\n\n# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db*\n`;
+    expect(updateGraphGitignore(current)).toEqual({
+      content: `node_modules\n\n${expectedIgnoreBlock}`,
+      changed: true,
+    });
+  });
+
+  it("canonical 3行と graph.db glob が同居しても glob を除去する", () => {
+    const current = `node_modules\n\n${expectedIgnoreBlock}.ts-review-graph/graph.db*\n`;
+    expect(updateGraphGitignore(current)).toEqual({
+      content: `node_modules\n\n${expectedIgnoreBlock}`,
+      changed: true,
+    });
+  });
 });
 
 describe("formatNpxAbiMismatchGuidance", () => {
@@ -50,7 +66,7 @@ was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`
 
     expect(formatNpxAbiMismatchGuidance(message)).toEqual([
       "ネイティブモジュールの Node ABI が一致していません。",
-      "次の npx キャッシュを削除してから install を再試行してください:",
+      "次の npx キャッシュを削除してから、同じコマンドを再実行してください:",
       "rm -rf -- '/Users/test user/.npm/_npx/08af52269914770e'",
     ]);
   });
@@ -60,7 +76,7 @@ was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`
 
     expect(formatNpxAbiMismatchGuidance(message)).toEqual([
       "ネイティブモジュールの Node ABI が一致していません。",
-      "該当する npx キャッシュを削除してから install を再試行してください。",
+      "該当する npx キャッシュを削除してから、同じコマンドを再実行してください。",
     ]);
   });
 
@@ -69,7 +85,7 @@ was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`
 
     expect(formatNpxAbiMismatchGuidance(message)).toEqual([
       "ネイティブモジュールの Node ABI が一致していません。",
-      "該当する npx キャッシュを削除してから install を再試行してください。",
+      "該当する npx キャッシュを削除してから、同じコマンドを再実行してください。",
     ]);
   });
 

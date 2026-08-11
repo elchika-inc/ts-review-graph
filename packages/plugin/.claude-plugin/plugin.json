@@ -1,6 +1,6 @@
 {
   "name": "ts-review-graph",
-  "version": "0.1.0",
+  "version": "0.5.1",
   "description": "TypeScript 型依存グラフで Claude Code のコンテキストを最小化",
   "author": { "name": "ts-review-graph contributors" },
   "hooks": "./hooks/hooks.json",
