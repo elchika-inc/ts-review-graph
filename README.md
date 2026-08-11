@@ -30,6 +30,7 @@ Graph size: 1,191 nodes / 1,400+ edges (Cloudflare Workers monorepo)
 ## Requirements
 
 - **Node.js 20+**
+- Claude Code plugin を使う場合は **bash** と **sqlite3 CLI**
 
 ## Installation
 
@@ -52,6 +53,8 @@ npx @elchika-inc/ts-review-graph@latest install \
   --tsconfig apps/worker/tsconfig.json
 ```
 
+Multiple tsconfigs are merged into a single unified graph (tested with 1,191+ nodes across layers).
+
 ### Claude Code plugin（任意）
 
 既存の CLI `install` はグラフ構築と MCP server 登録を行います。Claude Code plugin はそれに加えて commands・hooks・skills を導入し、`Read` のたびにブラスト半径をアドバイザリ表示する hook を有効にします。
@@ -61,9 +64,9 @@ claude plugin marketplace add elchika-inc/ts-review-graph
 claude plugin install ts-review-graph
 ```
 
-plugin 自体はグラフを構築しません。plugin 導入前または導入後に、対象 project で CLI の `install` または `build` を別途実行してください。
+plugin 自体はグラフを構築しません。plugin 導入前または導入後に、対象 project で CLI の `install` を別途実行してください。既に `config.json` がある場合は `build` でも再構築できますが、plugin は既定の `.ts-review-graph/graph.db` だけを参照するため、custom `--db` は使わないでください。
 
-Multiple tsconfigs are merged into a single unified graph (tested with 1,191+ nodes across layers).
+plugin を更新するには `claude plugin update ts-review-graph` を実行し、Claude Code を再起動します。CLI も更新する場合は、更新後の CLI version で初回と同じ option を指定して `install` を再実行してください。
 
 ## Usage
 

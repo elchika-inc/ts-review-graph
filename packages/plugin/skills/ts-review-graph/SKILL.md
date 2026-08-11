@@ -46,5 +46,5 @@ SKIP: 2,704 other files — not in blast radius
 
 If the graph is not built (tool returns "未構築"), suggest running:
 ```
-npx ts-review-graph build
+npx -y @elchika-inc/ts-review-graph@0.5.1 build
 ```

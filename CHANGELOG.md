@@ -10,8 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Claude Code plugin を配布する marketplace manifest と導入手順を追加した
 
+### Security
+- plugin の hook と skill が unscoped の `ts-review-graph` package を `npx` 実行・案内していた経路を、plugin version に固定した `@elchika-inc/ts-review-graph` へ置き換えた
+
 ### Fixed
 - plugin の MCP server が gitignore 済みの `dist/` と空の `TS_REVIEW_GRAPH_DB` に依存していた問題を、version 固定した公開 MCP package の利用により修正した
+- plugin hook manifest の event を必要な `hooks` 階層配下へ移し、Claude Code の plugin validation が失敗する問題を修正した
+- `build` command が MCP schema に存在しない `tsconfig` 引数を案内していた問題を、`tsconfigs` 配列へ修正した
+- PostToolUse hook が symlink 成分を含む論理パスと物理的な project root を混在させて増分更新に失敗する問題を、hook 内の project 相対パス化により修正した
 - `.gitignore` の `.ts-review-graph/graph.db*` を canonical な DB・WAL・SHM 3行へ置き換え、glob 行が孤立して残る問題を修正した
 - Node ABI 不一致時の npx cache 削除案内を `install` だけでなく `build`・`update`・`status` にも表示するようにした
 
