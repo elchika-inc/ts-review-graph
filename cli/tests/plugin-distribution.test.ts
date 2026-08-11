@@ -7,6 +7,7 @@ import { TOOL_DEFINITIONS } from "../../packages/mcp-server/src/tools/index.js";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const pluginRoot = path.join(repoRoot, "packages/plugin");
 const marketplacePath = path.join(repoRoot, ".claude-plugin/marketplace.json");
+const dbSchemaPath = path.join(repoRoot, "packages/core/src/db.ts");
 
 function readJson<T>(filePath: string): T {
   return JSON.parse(readFileSync(filePath, "utf-8")) as T;
@@ -34,7 +35,7 @@ describe("Claude Code plugin の配布契約", () => {
     expect(existsSync(path.join(sourceRoot, ".claude-plugin/plugin.json"))).toBe(true);
   });
 
-  it("plugin の配布物5箇所と公開3 package の version が一致する", () => {
+  it("plugin の配布物6箇所と公開3 package の version が一致する", () => {
     expect(existsSync(marketplacePath), "marketplace.json が存在する").toBe(true);
     if (!existsSync(marketplacePath)) return;
 
@@ -69,6 +70,7 @@ describe("Claude Code plugin の配布契約", () => {
       path.join(pluginRoot, "skills/ts-review-graph/SKILL.md"),
       "utf-8"
     );
+    const skillVersion = skill.match(/^version:\s*(\S+)$/m)?.[1];
 
     expect(marketplace.plugins[0]!.version).toBe(plugin.version);
     expect(packageVersions).toEqual([plugin.version, plugin.version, plugin.version]);
@@ -78,6 +80,23 @@ describe("Claude Code plugin の配布契約", () => {
     });
     expect(postWrite).toContain(`${cliPackageReference} update`);
     expect(skill).toContain(`${cliPackageReference} build`);
+    expect(skillVersion).toBe(plugin.version);
+  });
+
+  it("plugin 配下の例示に実在しない edge kind がない", () => {
+    const dbSchema = readFileSync(dbSchemaPath, "utf-8");
+    const schemaKinds = dbSchema.match(/-- edges\.kind の取りうる値: ([A-Z_| ]+)/)?.[1];
+    expect(schemaKinds).toBeDefined();
+    const allowedEdgeKinds = new Set(
+      schemaKinds!.split("|").map((kind) => kind.trim())
+    );
+    const pluginContent = readFilesRecursively(pluginRoot).join("\n");
+    const documentedEdgeKinds = [...pluginContent.matchAll(/\[([A-Z_]+)\]/g)].map(
+      (match) => match[1]!
+    );
+
+    expect(documentedEdgeKinds.length).toBeGreaterThan(0);
+    expect(documentedEdgeKinds.filter((kind) => !allowedEdgeKinds.has(kind))).toEqual([]);
   });
 
   it("plugin 配下に unscoped CLI の npx 実行がない", () => {

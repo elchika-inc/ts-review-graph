@@ -1,7 +1,7 @@
 ---
 name: ts-review-graph
 description: TypeScript プロジェクトのコードレビュー・実装・デバッグ時に自動起動。変更ファイルのブラスト半径を計算し、Claude が読むべき最小ファイルセットを提示する。
-version: 0.1.0
+version: 0.5.1
 ---
 
 ## When This Skill Activates
@@ -35,7 +35,7 @@ Changed: apps/api/src/routes/monitors.ts
 
 READ THESE FILES ONLY (4 files, mode=review, depth=2):
   1. apps/api/src/routes/monitors.ts          [changed]
-  2. apps/api/src/lib/monitor-config.ts       [CALLS]
+  2. apps/api/src/lib/monitor-config.ts       [IMPORTS_FROM]
   3. packages/shared/src/types.ts             [TYPED_BY]
   4. apps/api/tests/monitors.test.ts          [HAS_TEST]
 
