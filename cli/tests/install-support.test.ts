@@ -41,6 +41,14 @@ describe("updateGraphGitignore", () => {
       changed: true,
     });
   });
+
+  it("graph.db glob を孤立させず3ファイルの ignoreへ置き換える", () => {
+    const current = `node_modules\n\n# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)\n.ts-review-graph/graph.db*\n`;
+    expect(updateGraphGitignore(current)).toEqual({
+      content: `node_modules\n\n${expectedIgnoreBlock}`,
+      changed: true,
+    });
+  });
 });
 
 describe("formatNpxAbiMismatchGuidance", () => {

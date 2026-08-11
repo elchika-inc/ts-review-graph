@@ -19,6 +19,14 @@ import {
 const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
 const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
 
+function reportDatabaseOpenFailure(prefix: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(prefix, message);
+  for (const line of formatNpxAbiMismatchGuidance(message)) {
+    console.error(`  ${line}`);
+  }
+}
+
 const CONFIG_FILE_NAME = ".ts-review-graph/config.json";
 
 interface TsReviewGraphConfig {
@@ -131,11 +139,7 @@ program
     try {
       db = openDb(dbPath);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("⚠ データベースを開けませんでした:", message);
-      for (const line of formatNpxAbiMismatchGuidance(message)) {
-        console.error(`  ${line}`);
-      }
+      reportDatabaseOpenFailure("⚠ データベースを開けませんでした:", err);
       process.exit(1);
     }
     try {
@@ -262,7 +266,7 @@ program
     try {
       db = openDb(dbPath);
     } catch (err) {
-      console.error("グラフ DB を開けませんでした:", err instanceof Error ? err.message : err);
+      reportDatabaseOpenFailure("グラフ DB を開けませんでした:", err);
       process.exit(1);
     }
     try {
@@ -321,7 +325,7 @@ program
     try {
       db = openDb(dbPath);
     } catch (err) {
-      console.error("グラフ DB を開けませんでした:", err instanceof Error ? err.message : err);
+      reportDatabaseOpenFailure("グラフ DB を開けませんでした:", err);
       process.exit(1);
     }
     try {
@@ -364,7 +368,7 @@ program
     try {
       db = openDb(dbPath);
     } catch (err) {
-      console.error("グラフ DB を開けませんでした:", err instanceof Error ? err.message : err);
+      reportDatabaseOpenFailure("グラフ DB を開けませんでした:", err);
       process.exit(1);
     }
     try {

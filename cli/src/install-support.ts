@@ -28,6 +28,7 @@ export function updateGraphGitignore(content: string): GitignoreUpdate {
     "# ts-review-graph",
     gitignoreHeader,
     ".ts-review-graph/",
+    ".ts-review-graph/graph.db*",
     ...graphIgnoreLines,
   ]);
   const retained = lines.filter((line) => !obsoleteLines.has(line));

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-08-12
+
+### Added
+- Claude Code plugin を配布する marketplace manifest と導入手順を追加した
+
+### Fixed
+- plugin の MCP server が gitignore 済みの `dist/` と空の `TS_REVIEW_GRAPH_DB` に依存していた問題を、version 固定した公開 MCP package の利用により修正した
+- `.gitignore` の `.ts-review-graph/graph.db*` を canonical な DB・WAL・SHM 3行へ置き換え、glob 行が孤立して残る問題を修正した
+- Node ABI 不一致時の npx cache 削除案内を `install` だけでなく `build`・`update`・`status` にも表示するようにした
+
+### Changed
+- Claude Code plugin の version を公開 package と同じ `0.5.1` へ揃えた
+
 ## [0.5.1] - 2026-08-09
 
 ### Security

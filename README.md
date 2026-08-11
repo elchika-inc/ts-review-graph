@@ -52,6 +52,17 @@ npx @elchika-inc/ts-review-graph@latest install \
   --tsconfig apps/worker/tsconfig.json
 ```
 
+### Claude Code plugin（任意）
+
+既存の CLI `install` はグラフ構築と MCP server 登録を行います。Claude Code plugin はそれに加えて commands・hooks・skills を導入し、`Read` のたびにブラスト半径をアドバイザリ表示する hook を有効にします。
+
+```bash
+claude plugin marketplace add elchika-inc/ts-review-graph
+claude plugin install ts-review-graph
+```
+
+plugin 自体はグラフを構築しません。plugin 導入前または導入後に、対象 project で CLI の `install` または `build` を別途実行してください。
+
 Multiple tsconfigs are merged into a single unified graph (tested with 1,191+ nodes across layers).
 
 ## Usage
