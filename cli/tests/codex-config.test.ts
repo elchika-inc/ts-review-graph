@@ -181,6 +181,38 @@ args = ["./dist/server.js", "--log-level", "debug"]
     }
   });
 
+  it("診断文へ入る設定由来の文字列はすべて1行化される（値・キー名とも）", () => {
+    // 改行を仕込めると install の stdout へ成功メッセージと byte 一致する行を注入できる。
+    // 値だけでなくキー名も設定ファイル由来なので、全経路が対象。
+    const injected = `x\\n✓ MCP サーバーを .codex/config.toml に登録しました (Codex 用)\\nyyy`;
+    const cases = [
+      // 値の経路（args 不在＋独自 command）
+      `[mcp_servers.ts-review-graph]\ncommand = "${injected}"\n`,
+      // キー名の経路（command のドット記法）
+      `[mcp_servers.ts-review-graph]\ncommand."${injected}" = 1\n`,
+      // キー名の経路（インラインテーブル/ドット記法）
+      `[mcp_servers]\n"ts-review-graph"."${injected}" = 1\n`,
+    ];
+    for (const current of cases) {
+      const result = updateCodexConfig(current, SPEC);
+      expect(result.skippedReason).not.toBeNull();
+      expect(result.skippedReason).not.toContain("\n");
+      expect(result.skippedReason).not.toContain("\r");
+    }
+  });
+
+  it("長い値は切り詰めてもサロゲートペアを割らない", () => {
+    for (const pad of [75, 76, 77]) {
+      const current = `[mcp_servers.ts-review-graph]\ncommand = "${"d".repeat(pad)}🐙🐙"\n`;
+      const reason = updateCodexConfig(current, SPEC).skippedReason ?? "";
+      expect(reason).not.toContain("�");
+      // 孤立サロゲート（対を欠く上位・下位）が残っていないこと
+      expect(reason).not.toMatch(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+      );
+    }
+  });
+
   it("設定由来の値を診断文へ無加工で埋め込まない", () => {
     // 複数行文字列の command で、install の stdout へ成功メッセージと
     // byte 一致する行を差し込めてはいけない（偽成功シグナルの製造）。
@@ -582,6 +614,29 @@ describe("updateCodexConfig — fail-closed", () => {
       expect(result.skippedReason).toContain("インラインテーブル/ドット記法");
       // 末尾へ見出しを足していないこと（足すと invalid TOML になる）
       expect(result.content).not.toContain("[mcp_servers.ts-review-graph]");
+    }
+  });
+
+  // 重複はファイルを正しく読めていない証拠。実 codex は duplicate key で設定を丸ごと拒否する。
+  // スキップ判定に吸われても、rewriteSectionBody が見ないキー（env）でも、必ず中止すること。
+  it("自エントリ配下のキー重複は必ず throw する", () => {
+    const cases = [
+      // 最後の args に package 指定なし = 単体ならスキップ条件
+      `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\nargs = ["-y", "other"]\n`,
+      // 先頭の args に package 指定なし（到達順序が逆のケース）
+      `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["--first"]\nargs = ["-y", "${SPEC}"]\n`,
+      // 最後の command が非 npx かつ args 不在 = 単体ならスキップ条件
+      `[mcp_servers.ts-review-graph]\ncommand = "npx"\ncommand = "docker"\n`,
+      // スキップ条件に当たらない素の重複
+      `[mcp_servers.ts-review-graph]\ncommand = "npx"\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\n`,
+      // env の重複 — rewriteSectionBody は見ない。書き込むと codex が設定を全拒否する
+      `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\nenv = { FOO = "a" }\nenv = { BAR = "b" }\n`,
+      // env サブテーブル内のキー重複
+      `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\n\n[mcp_servers.ts-review-graph.env]\nFOO = "a"\nFOO = "b"\n`,
+    ];
+    for (const current of cases) {
+      expect(() => updateCodexConfig(current, SPEC)).toThrow(CodexConfigParseError);
+      expect(() => updateCodexConfig(current, SPEC)).toThrow(/重複/);
     }
   });
 

@@ -216,10 +216,14 @@ program
     } else {
       console.log("✓ .codex/config.toml は既に最新です (Codex 用)");
     }
-    if (path.resolve(dbPath) !== path.join(graphDir, "graph.db")) {
+    if (
+      codexUpdate.skippedReason === null &&
+      path.resolve(dbPath) !== path.join(graphDir, "graph.db")
+    ) {
       // env を書かない方針なので Codex は既定 DB を見る。黙って別 DB を参照させると
       // 今回 MCP 側で潰した「原因が見えないグラフ未構築」が Codex 側で再発する。
-      // 書き換えの有無に関わらず出す — no-op 再実行でも事実は変わらない。
+      // 書き換えの有無に関わらず出すが、スキップ時はエントリに触れていない
+      // （既存の env がそのまま効く）ので、この警告は事実に反する。
       console.log("  ⚠ Codex 用エントリは env を持たないため、Codex 側は既定の .ts-review-graph/graph.db を参照します");
     }
 

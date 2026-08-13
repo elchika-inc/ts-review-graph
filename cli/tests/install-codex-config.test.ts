@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -38,6 +38,16 @@ function runInstall(root: string, extraArgs: string[] = []): string {
     [cliPath, "install", "--tsconfig", "tsconfig.json", ...extraArgs],
     { cwd: root, encoding: "utf8" }
   );
+}
+
+/** 警告は stderr へ出るため、両方を見たいときはこちらを使う。 */
+function runInstallCapture(root: string, extraArgs: string[] = []): string {
+  const result = spawnSync(
+    process.execPath,
+    [cliPath, "install", "--tsconfig", "tsconfig.json", ...extraArgs],
+    { cwd: root, encoding: "utf8" }
+  );
+  return `${result.stdout ?? ""}${result.stderr ?? ""}`;
 }
 
 function readCodexConfig(root: string): string {
@@ -109,6 +119,24 @@ env = { TS_REVIEW_GRAPH_DB = "/old/absolute/path/.ts-review-graph/graph.db" }
   it("既定 DB では余計な警告を出さない", () => {
     const root = createProject();
     expect(runInstall(root)).not.toContain("既定の .ts-review-graph/graph.db を参照します");
+  });
+
+  it("スキップしたエントリには custom --db の警告を出さない", () => {
+    // エントリに触れていないので既存の env がそのまま効く。
+    // 「Codex は既定 DB を見る」は事実に反する。
+    const root = createProject();
+    mkdirSync(path.join(root, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(root, ".codex/config.toml"),
+      `[mcp_servers.ts-review-graph]\ncommand = "docker"\nargs = ["run"]\nenv = { TS_REVIEW_GRAPH_DB = "/custom/graph.db" }\n`
+    );
+
+    const output = runInstallCapture(root, ["--db", "custom/graph.db"]);
+
+    expect(output).toContain("は更新しませんでした");
+    expect(output).not.toContain("既定の .ts-review-graph/graph.db を参照します");
+    // エントリは無変更なので既存の env がそのまま効く
+    expect(readCodexConfig(root)).toContain(`TS_REVIEW_GRAPH_DB = "/custom/graph.db"`);
   });
 
   it("独自起動エントリは更新せず、install は完走する", () => {

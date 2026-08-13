@@ -81,7 +81,7 @@ args = [
 ]
 ```
 
-既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させません。更新できるかは **`args` に `@elchika-inc/ts-review-graph-mcp-server` の指定があるか**で決まります。指定があれば `command` の値（`docker` 等）に関わらず、その version 指定だけを差し替えます（version が付いていなければ付与します）。`--log-level debug` のように独自に足した引数はそのまま残り、`command` を独自の値へ変えている場合もそれを保持します（`command` が無いときだけ `"npx"` を補います）。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
+既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させません。**`args` がある場合**、更新できるかは `args` に `@elchika-inc/ts-review-graph-mcp-server` の指定があるかで決まります。指定があれば `command` の値（`docker` 等）に関わらず、その version 指定だけを差し替えます（version が付いていなければ付与します）。**`args` が無い場合**は、`command` が `npx` か未指定のときにかぎり既定の `args` を書き足します。`--log-level debug` のように独自に足した引数はそのまま残り、`command` を独自の値へ変えている場合もそれを保持します（`command` が無いときだけ `"npx"` を補います）。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
 
 次のいずれかに当てはまるエントリは、どう起動したいのかを推測できないため**そのエントリだけ更新せず警告します**（`env` も含めて一切変更しません）。`install` 自体は続行し、`.mcp.json` などは通常どおり更新されるので、version の更新が必要なら `.codex/config.toml` を手動で編集してください。
 
@@ -90,7 +90,7 @@ args = [
 - `command` または `args` をドット記法（`command.foo = ...`）で書いている
 - `mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法（`ts-review-graph = { ... }` など）で定義している
 
-既存の `.codex/config.toml` を**そもそも正しく読めない**場合（値や文字列が閉じていない、括弧の対応が取れていない、テーブル見出しを解釈できない、`[mcp_servers.ts-review-graph]` セクションやその中の `command`・`args` が重複定義されている、`[[mcp_servers.ts-review-graph]]` で定義されている等）、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（閉じていない文字列・括弧なら閉じる、重複定義は1つへ統合、`[[...]]` は通常のテーブル見出しへ）してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
+既存の `.codex/config.toml` を**そもそも正しく読めない**場合（値や文字列が閉じていない、括弧の対応が取れていない、テーブル見出しを解釈できない、`[mcp_servers.ts-review-graph]` セクションやその中のキーが重複定義されている、`[[mcp_servers.ts-review-graph]]` で定義されている等）、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（閉じていない文字列・括弧なら閉じる、重複定義は1つへ統合、`[[...]]` は通常のテーブル見出しへ）してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
 
 既知の制限:
 

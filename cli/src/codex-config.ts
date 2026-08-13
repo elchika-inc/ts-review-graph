@@ -476,6 +476,8 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
   let sectionIndex = -1;
   let inlineSkipReason: string | null = null;
   const subTableIndexes: number[] = [];
+  // 自エントリ配下のキーパス。重複はファイルを正しく読めていない証拠なので中止する。
+  const ownKeyPaths = new Set<string>();
 
   for (const [index, item] of items.entries()) {
     if (item.kind === "header") {
@@ -510,13 +512,25 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
     // 後者を見落として末尾へテーブル見出しを足すと、インラインテーブルへ後から
     // キーを足す TOML 仕様違反のファイルになり、Codex が project 設定を丸ごと読めなくなる。
     // 読めてはいるので中止ではなくスキップに倒す——書かなければ壊れない。
-    if (startsWithPath(currentTable, SERVER_TABLE_PATH)) continue;
+    if (startsWithPath(currentTable, SERVER_TABLE_PATH)) {
+      // 自エントリ配下のキー重複はスキップ判定より前にここで倒す。
+      // 後段（rewriteSectionBody）へ置くと、スキップ判定に吸われて到達しない組み合わせが出る。
+      // env のように rewriteSectionBody が見ないキーも、ここなら漏れなく拾える。
+      const keyPath = [...currentTable, ...item.parts].join(" ");
+      if (ownKeyPaths.has(keyPath)) {
+        throw new CodexConfigParseError(
+          `[mcp_servers.ts-review-graph] で ${describeValue(item.parts.join("."))} が重複定義されています`
+        );
+      }
+      ownKeyPaths.add(keyPath);
+      continue;
+    }
     const absolute = [...currentTable, ...item.parts];
     if (
       startsWithPath(absolute, SERVER_TABLE_PATH) ||
       startsWithPath(SERVER_TABLE_PATH, absolute)
     ) {
-      inlineSkipReason ??= `${absolute.join(".")} が値（インラインテーブル/ドット記法）として定義されています`;
+      inlineSkipReason ??= `${describeValue(absolute.join("."))} が値（インラインテーブル/ドット記法）として定義されています`;
     }
   }
 
@@ -632,7 +646,7 @@ function findSkipReason(
     // `command.foo` / `args.foo` は command/args をテーブルとして扱う記法。
     // 補完した `command = "npx"` / `args = [...]` と衝突して invalid TOML を生む。
     if (rest.length > 0) {
-      return `${head} がドット記法（${item.parts.join(".")}）で定義されています`;
+      return `${head} がドット記法（${describeValue(item.parts.join("."))}）で定義されています`;
     }
     if (head === "command") {
       hasCommand = true;
@@ -659,15 +673,18 @@ function findSkipReason(
 }
 
 /**
- * 設定ファイル由来の値を診断文へ埋め込む形に整える。
+ * 設定ファイル由来の文字列（値・キー名とも）を診断文へ埋め込む形に整える。
  *
- * 無加工で埋め込むと、複数行文字列の `command` で install の stdout へ
+ * 無加工で埋め込むと、改行を含む `command` の値やキー名で install の stdout へ
  * 成功メッセージと byte 一致する行を差し込める（偽成功シグナルの製造）。
+ * 設定ファイル由来の文字列を診断文へ入れる箇所は、すべてここを通すこと。
  */
 function describeValue(value: string | null): string {
   if (value === null) return "解釈不能";
   const encoded = JSON.stringify(value);
-  return encoded.length > 80 ? `${encoded.slice(0, 79)}…` : encoded;
+  if (encoded.length <= 80) return encoded;
+  // コードポイント単位で切る。UTF-16 単位だとサロゲートペアを割って U+FFFD になる。
+  return `${Array.from(encoded).slice(0, 79).join("")}…`;
 }
 
 function rewriteSectionBody(
@@ -689,10 +706,9 @@ function rewriteSectionBody(
 
     if (item.kind === "key") {
       const [head, ...rest] = item.parts;
+      // 重複キー・ドット記法・args の指定なしは、いずれも updateCodexConfig の走査と
+      // findSkipReason が先に倒している（ゲートは1箇所）。ここは正常系だけを扱う。
       if (head === "command" && rest.length === 0) {
-        if (sawCommand) {
-          throw new CodexConfigParseError("[mcp_servers.ts-review-graph] に command が重複しています");
-        }
         sawCommand = true;
         // 利用者が変えた command は保持する（更新するのは args の version だけ）
         body.push(...lines.slice(item.start, item.end + 1));
@@ -700,13 +716,8 @@ function rewriteSectionBody(
         continue;
       }
       if (head === "args" && rest.length === 0) {
-        if (sawArgs) {
-          throw new CodexConfigParseError("[mcp_servers.ts-review-graph] に args が重複しています");
-        }
         sawArgs = true;
         const raw = lines.slice(item.start, item.end + 1).join("\n");
-        // findSkipReason は最後の args しか見ないため、重複時はここで null になりうる。
-        // 非 null 断定にすると TypeError になり、原因の伝わらない診断になる。
         const replaced = replacePackageSpecInArgs(raw, packageSpec);
         if (replaced === null) {
           throw new CodexConfigParseError(
