@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -111,10 +111,35 @@ env = { TS_REVIEW_GRAPH_DB = "/old/absolute/path/.ts-review-graph/graph.db" }
     expect(runInstall(root)).not.toContain("既定の .ts-review-graph/graph.db を参照します");
   });
 
+  it("独自起動エントリは更新せず、install は完走する", () => {
+    // R3 の設計変更の本体。ここを fail-closed へ戻すと、docker/node で独自起動している
+    // 利用者は install を完走できず .mcp.json の更新経路まで恒久的に塞がれる。
+    const root = createProject();
+    mkdirSync(path.join(root, ".codex"), { recursive: true });
+    const custom = `[mcp_servers.ts-review-graph]
+command = "docker"
+args = ["run", "--rm", "-i", "ts-review-graph:latest"]
+
+[mcp_servers.ts-review-graph.env]
+TS_REVIEW_GRAPH_DB = "/in/container/graph.db"
+`;
+    writeFileSync(path.join(root, ".codex/config.toml"), custom);
+
+    const output = runInstall(root);
+
+    expect(output).toContain("ts-review-graph インストール完了");
+    // エントリは env サブテーブルごと完全に無変更
+    expect(readCodexConfig(root)).toBe(custom);
+    // install 自体は続行し、Claude Code 側は通常どおり更新される
+    expect(existsSync(path.join(root, ".mcp.json"))).toBe(true);
+    expect(existsSync(path.join(root, ".ts-review-graph/config.json"))).toBe(true);
+  });
+
   it("解釈できない .codex/config.toml では設定ファイル群を書かずに失敗する", () => {
     const root = createProject();
     mkdirSync(path.join(root, ".codex"), { recursive: true });
-    const broken = `[mcp_servers]\nts-review-graph = { command = "npx" }\n`;
+    // 値が閉じていない＝ファイルを正しく読めないケース（記法の問題ではない）
+    const broken = `[mcp_servers.other]\nargs = [\n"-y",\n`;
     writeFileSync(path.join(root, ".codex/config.toml"), broken);
 
     let status = 0;

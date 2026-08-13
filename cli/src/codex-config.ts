@@ -18,11 +18,13 @@ export interface CodexConfigUpdate {
   /**
    * 既存エントリを安全に更新できず、触れずに残した理由。
    *
-   * 中止の粒度は2段に分ける:
-   * - **構造が解釈できない** → `CodexConfigParseError`。何も書かない（fail-closed）
-   * - **解釈できるが書き換えられないエントリ** → ここに理由を入れて続行。
-   *   独自の起動方法（docker / node ラッパー等）を設定している利用者の install を
-   *   恒久的に塞がないため、エントリだけを見送る。
+   * 中止の粒度は2段に分ける。判定軸は「**ファイルを正しく読めたか**」:
+   * - **読めない**（値/文字列が閉じない、括弧の対応が取れない、見出しを解釈できない、
+   *   重複定義、`[[...]]`）→ `CodexConfigParseError`。何も書かない（fail-closed）
+   * - **読めたが in-place で書き換えられない** → ここに理由を入れて続行。
+   *   ファイルへ1バイトも書かないので常に安全であり、独自の起動方法（docker /
+   *   node ラッパー等）や記法（インラインテーブル）を使う利用者の install を
+   *   恒久的に塞がない。
    */
   skippedReason: string | null;
 }
@@ -472,6 +474,7 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
 
   let currentTable: string[] = [];
   let sectionIndex = -1;
+  let inlineSkipReason: string | null = null;
   const subTableIndexes: number[] = [];
 
   for (const [index, item] of items.entries()) {
@@ -500,22 +503,20 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
     if (item.kind !== "key") continue;
 
     // 自分のセクション（およびその子テーブル）の外側から
-    // mcp_servers.ts-review-graph を値として定義している記法は安全に更新できない。
+    // mcp_servers.ts-review-graph を値として定義している記法は in-place で更新できない。
     // 判定は双方向に行う必要がある:
     //   - キーが対象パスの子孫  … [mcp_servers] + `ts-review-graph = { ... }`
     //   - キーが対象パスの祖先  … ルートの `mcp_servers = { ... }`
-    // 後者を見落とすと、インラインテーブルへ後からテーブル見出しを足す
-    // TOML 仕様違反のファイルを書き出し、Codex がその project 設定を丸ごと読めなくなる。
+    // 後者を見落として末尾へテーブル見出しを足すと、インラインテーブルへ後から
+    // キーを足す TOML 仕様違反のファイルになり、Codex が project 設定を丸ごと読めなくなる。
+    // 読めてはいるので中止ではなくスキップに倒す——書かなければ壊れない。
     if (startsWithPath(currentTable, SERVER_TABLE_PATH)) continue;
     const absolute = [...currentTable, ...item.parts];
     if (
       startsWithPath(absolute, SERVER_TABLE_PATH) ||
       startsWithPath(SERVER_TABLE_PATH, absolute)
     ) {
-      throw new CodexConfigParseError(
-        `${absolute.join(".")} が値（インラインテーブル/ドット記法）として定義されています。` +
-          "[mcp_servers.ts-review-graph] のテーブル見出し記法へ手動で整理してください"
-      );
+      inlineSkipReason ??= `${absolute.join(".")} が値（インラインテーブル/ドット記法）として定義されています`;
     }
   }
 
@@ -545,25 +546,27 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
   // env の除去も行わない——独自の起動方法では env が意味を持ちうる。
   const sectionBodyEnd = sectionIndex === -1 ? -1 : nextHeaderIndex(items, sectionIndex);
   const skippedReason =
-    sectionIndex === -1
+    inlineSkipReason ??
+    (sectionIndex === -1
       ? null
-      : findSkipReason(items, lines, sectionIndex + 1, sectionBodyEnd, packageSpec);
+      : findSkipReason(items, lines, sectionIndex + 1, sectionBodyEnd, packageSpec));
+
+  // スキップ時はファイルへ1バイトも書かない。末尾空行の正規化すら行わないことで
+  // 「skippedReason を先に見よ」という暗黙の契約を戻り値の構造で担保する。
+  if (skippedReason !== null) {
+    return { content: current, changed: false, skippedReason };
+  }
 
   const output: string[] = [];
   for (const [index, item] of items.entries()) {
-    if (skippedReason === null && dropped.has(index)) continue;
+    if (dropped.has(index)) continue;
 
     if (index === sectionIndex) {
       output.push(...lines.slice(item.start, item.end + 1));
-      if (skippedReason !== null) continue; // 本体は以降の通常経路でそのまま出力する
       output.push(...rewriteSectionBody(items, lines, index + 1, sectionBodyEnd, dropped, packageSpec));
       continue;
     }
-    if (skippedReason !== null) {
-      output.push(...lines.slice(item.start, item.end + 1));
-      continue;
-    }
-    if (sectionIndex !== -1 && index > sectionIndex && index < nextHeaderIndex(items, sectionIndex)) {
+    if (sectionIndex !== -1 && index > sectionIndex && index < sectionBodyEnd) {
       continue; // セクション本体は rewriteSectionBody が出力済み
     }
     output.push(...lines.slice(item.start, item.end + 1));
@@ -650,9 +653,21 @@ function findSkipReason(
   // args 不在で command が独自値なら、既定 args を補うと
   // `<独自 command> -y @elchika-inc/...` という起動不能な組み合わせになる。
   if (hasCommand && commandValue !== "npx") {
-    return `args が無く command が独自の値（${commandValue ?? "解釈不能"}）です`;
+    return `args が無く command が独自の値（${describeValue(commandValue)}）です`;
   }
   return null;
+}
+
+/**
+ * 設定ファイル由来の値を診断文へ埋め込む形に整える。
+ *
+ * 無加工で埋め込むと、複数行文字列の `command` で install の stdout へ
+ * 成功メッセージと byte 一致する行を差し込める（偽成功シグナルの製造）。
+ */
+function describeValue(value: string | null): string {
+  if (value === null) return "解釈不能";
+  const encoded = JSON.stringify(value);
+  return encoded.length > 80 ? `${encoded.slice(0, 79)}…` : encoded;
 }
 
 function rewriteSectionBody(
@@ -690,8 +705,15 @@ function rewriteSectionBody(
         }
         sawArgs = true;
         const raw = lines.slice(item.start, item.end + 1).join("\n");
-        // findSkipReason が先に走っているので、ここへ来る時点で必ず置換できる
-        body.push(...replacePackageSpecInArgs(raw, packageSpec)!.split("\n"));
+        // findSkipReason は最後の args しか見ないため、重複時はここで null になりうる。
+        // 非 null 断定にすると TypeError になり、原因の伝わらない診断になる。
+        const replaced = replacePackageSpecInArgs(raw, packageSpec);
+        if (replaced === null) {
+          throw new CodexConfigParseError(
+            `[mcp_servers.ts-review-graph] の args に ${MCP_PACKAGE_NAME} の指定がありません`
+          );
+        }
+        body.push(...replaced.split("\n"));
         lastContentIndex = body.length;
         continue;
       }
@@ -717,12 +739,14 @@ function rewriteSectionBody(
     if (item.kind === "key") lastContentIndex = body.length;
   }
 
-  const missing: string[] = [];
-  if (!sawCommand) missing.push(`command = "npx"`);
-  if (!sawArgs) missing.push(...buildArgsLines(packageSpec));
-  if (missing.length === 0) return body;
+  if (sawCommand && sawArgs) return body;
 
-  // 既存キーの直後へ差し込む。先頭へ入れると args が command より前に来て不自然になる。
-  const insertAt = lastContentIndex === -1 ? 0 : lastContentIndex;
-  return [...body.slice(0, insertAt), ...missing, ...body.slice(insertAt)];
+  // args は既存キーの直後へ、command は必ず先頭へ入れる。
+  // まとめて片側へ寄せると、command のみ／args のみのどちらかで順序が逆転する。
+  const result = [...body];
+  if (!sawArgs) {
+    result.splice(lastContentIndex === -1 ? 0 : lastContentIndex, 0, ...buildArgsLines(packageSpec));
+  }
+  if (!sawCommand) result.unshift(`command = "npx"`);
+  return result;
 }

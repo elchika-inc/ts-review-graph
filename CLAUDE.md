@@ -35,6 +35,7 @@ pnpm monorepo。4 パッケージで構成:
 - `packages/core/src/updater.ts` — 増分更新ロジック
 - `packages/mcp-server/src/tools/index.ts` — 全 MCP ツール定義と登録
 - `cli/src/index.ts` — CLI エントリポイント (install/build/update/status/uninstall)
+- `cli/src/codex-config.ts` — Codex 用 `.codex/config.toml` の追記。中止の粒度は2段で、判定軸は「ファイルを正しく読めたか」（読めない→install 全体を中止 / 読めたが in-place 更新できない→そのエントリだけスキップして続行）
 
 ## Database Schema
 
@@ -65,7 +66,7 @@ MCP サーバーの**すべての DB オープン経路が同じ実装を参照�
 
 **重要**: MCP サーバーは DB を開けなかったときに「未構築」と言わない。db=null でも動作する
 ツールを追加するときは、ABI 診断を届ける責任も同時に負う——忘れると、そのツールだけが
-ABI 不一致を「未構築」や原因不明のエラーとして誤報する。出し分けと2系統の届け方は
+ABI 不一致を「未構築」や原因不明のエラーとして誤報する。出し分けと届け方は
 `packages/mcp-server/src/tools/db-unavailable.ts` が正本で、挙動は
 `packages/mcp-server/tests/db-unavailable.test.ts` と
 `packages/mcp-server/tests/server-degraded.test.ts` が固定している。

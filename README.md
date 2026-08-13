@@ -81,15 +81,22 @@ args = [
 ]
 ```
 
-既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させず、`args` の中の ts-review-graph の version 指定だけを差し替えます（`--log-level debug` のように独自に足した引数はそのまま残ります）。`command` を独自の値へ変えている場合はそれを保持し、`command` が無いときだけ `"npx"` を補います。`command = "docker"` や `command = "node"` のように独自の起動方法を設定しているエントリ（`args` に ts-review-graph の package 指定が無い、`args` が無く `command` が `npx` 以外、`command`/`args` をドット記法で書いている）は、どう起動したいのかを推測できないため**そのエントリだけ更新せず警告します** — `install` 自体は続行し、`.mcp.json` などは通常どおり更新されます。version の更新が必要なら `.codex/config.toml` を手動で編集してください。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
+既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させません。更新できるかは **`args` に `@elchika-inc/ts-review-graph-mcp-server` の指定があるか**で決まります。指定があれば `command` の値（`docker` 等）に関わらず、その version 指定だけを差し替えます（version が付いていなければ付与します）。`--log-level debug` のように独自に足した引数はそのまま残り、`command` を独自の値へ変えている場合もそれを保持します（`command` が無いときだけ `"npx"` を補います）。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
 
-既存の `.codex/config.toml` に安全に更新できない記法（`mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法・`[[...]]` で定義している、値や文字列が閉じていない等）が含まれる場合、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（インラインテーブル・ドット記法なら通常のテーブル見出し記法へ整理、閉じていない文字列・括弧なら閉じる）してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
+次のいずれかに当てはまるエントリは、どう起動したいのかを推測できないため**そのエントリだけ更新せず警告します**（`env` も含めて一切変更しません）。`install` 自体は続行し、`.mcp.json` などは通常どおり更新されるので、version の更新が必要なら `.codex/config.toml` を手動で編集してください。
+
+- `args` に `@elchika-inc/ts-review-graph-mcp-server` の指定が無い
+- `args` が無く `command` が `npx` 以外（`command = "docker"` など）
+- `command` または `args` をドット記法（`command.foo = ...`）で書いている
+- `mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法（`ts-review-graph = { ... }` など）で定義している
+
+既存の `.codex/config.toml` を**そもそも正しく読めない**場合（値や文字列が閉じていない、括弧の対応が取れていない、テーブル見出しを解釈できない、`[mcp_servers.ts-review-graph]` セクションやその中の `command`・`args` が重複定義されている、`[[mcp_servers.ts-review-graph]]` で定義されている等）、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（閉じていない文字列・括弧なら閉じる、重複定義は1つへ統合、`[[...]]` は通常のテーブル見出しへ）してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
 
 既知の制限:
 
 - **project 単位の設定が読まれるのは trust 済みの project だけです。** trust されていない project では Codex が `.codex/config.toml` の `mcp_servers` を読み込まないため、`~/.codex/config.toml` へ同じ `[mcp_servers.ts-review-graph]` を手動で登録してください。trust 状態は `~/.codex/config.toml` 側に `trust_level = "trusted"` として記録されます。
 - **Codex から使えるのは `.codex/config.toml` 経由で登録される MCP tools です。** Claude Code plugin が導入する commands・hooks・skills は `claude plugin install` で Claude Code 側に入るもので、対象 project のディレクトリには置かれないため Codex からは読み込まれません（Codex 自身の hooks / skills 機構とは別物です）。plugin が提供する `Read` 時のブラスト半径アドバイザリ表示も Codex では働きません。`install` が使用方法を追記するのは `CLAUDE.md` なので、Codex のエージェントに恒常的に守らせたい場合は同じ内容を `AGENTS.md` へコピーしてください。
-- custom `--db` を指定した場合でも Codex 用エントリには `env` を書かないため、Codex 側は既定の `.ts-review-graph/graph.db` を参照します。`.codex/config.toml` へ手動で `TS_REVIEW_GRAPH_DB` を足しても次の `install` で除去されるため、custom DB を Codex から使う場合は `~/.codex/config.toml` 側のエントリか、Codex 起動時の環境変数で指定してください。
+- custom `--db` を指定した場合でも Codex 用エントリには `env` を書かないため、Codex 側は既定の `.ts-review-graph/graph.db` を参照します。エントリが更新対象の場合、`.codex/config.toml` へ手動で `TS_REVIEW_GRAPH_DB` を足しても次の `install` で除去されるため、custom DB を Codex から使う場合は `~/.codex/config.toml` 側のエントリか、Codex 起動時の環境変数で指定してください。
 
 ## Usage
 

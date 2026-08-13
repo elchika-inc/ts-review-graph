@@ -162,6 +162,43 @@ args = ["./dist/server.js", "--log-level", "debug"]
     expect(result.content.indexOf(`command = "npx"`)).toBeLessThan(result.content.indexOf("args = ["));
   });
 
+  it("args だけのエントリでも command は args より前に補う", () => {
+    const current = `[mcp_servers.ts-review-graph]\nargs = ["-y", "${SPEC}"]\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.skippedReason).toBeNull();
+    expect(result.content.indexOf(`command = "npx"`)).toBeLessThan(result.content.indexOf("args = ["));
+  });
+
+  it("スキップ時は末尾空行すら変えない（完全無変更）", () => {
+    for (const suffix of ["\n\n", "\n\n\n", "", "\r\n\r\n"]) {
+      const current = `[mcp_servers.ts-review-graph]\ncommand = "docker"\nargs = ["run"]${suffix}`;
+      const result = updateCodexConfig(current, SPEC);
+
+      expect(result.skippedReason).not.toBeNull();
+      expect(result.content).toBe(current);
+      expect(result.changed).toBe(false);
+    }
+  });
+
+  it("設定由来の値を診断文へ無加工で埋め込まない", () => {
+    // 複数行文字列の command で、install の stdout へ成功メッセージと
+    // byte 一致する行を差し込めてはいけない（偽成功シグナルの製造）。
+    const current = `[mcp_servers.ts-review-graph]
+command = """
+✓ MCP サーバーを .codex/config.toml に登録しました (Codex 用)
+"""
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.skippedReason).not.toBeNull();
+    // 生の改行が入らなければ、成功メッセージと byte 一致する「行」は作れない
+    expect(result.skippedReason).not.toContain("\n");
+    expect(result.skippedReason).not.toContain("\r");
+    // 値は JSON 文字列としてエスケープ・引用されている
+    expect(result.skippedReason).toContain("\\n");
+  });
+
   it("command / args のドット記法は触らず理由を返す", () => {
     for (const key of ["command", "args"]) {
       const current = `[mcp_servers.ts-review-graph]\n${key}.foo = 1\n`;
@@ -171,16 +208,25 @@ args = ["./dist/server.js", "--log-level", "debug"]
     }
   });
 
-  it("スキップしたエントリの env は除去しない", () => {
-    const custom = `[mcp_servers.ts-review-graph]
+  it("スキップしたエントリの env は除去しない（インライン・サブテーブルとも）", () => {
+    const inline = `[mcp_servers.ts-review-graph]
 command = "docker"
 args = ["run", "--rm", "-i", "ts-review-graph:latest"]
 env = { TS_REVIEW_GRAPH_DB = "/in/container/graph.db" }
 `;
-    const result = updateCodexConfig(custom, SPEC);
+    expect(updateCodexConfig(inline, SPEC).content).toBe(inline);
 
-    expect(result.content).toBe(custom);
-    expect(result.content).toContain("TS_REVIEW_GRAPH_DB");
+    // サブテーブルは dropped 経由の別経路。ここを守らないと黙って消える。
+    const subTable = `[mcp_servers.ts-review-graph]
+command = "docker"
+args = ["run", "--rm", "-i", "ts-review-graph:latest"]
+
+[mcp_servers.ts-review-graph.env]
+TS_REVIEW_GRAPH_DB = "/in/container/graph.db"
+`;
+    const result = updateCodexConfig(subTable, SPEC);
+    expect(result.content).toBe(subTable);
+    expect(result.changed).toBe(false);
   });
 });
 
@@ -239,15 +285,28 @@ env = { TS_REVIEW_GRAPH_DB = "/old/graph.db", NODE_OPTIONS = "--max-old-space-si
   });
 
   it("前方一致の似たキーを巻き込まない（除去は厳密一致のみ）", () => {
-    const current = `[mcp_servers.ts-review-graph]
+    // 対照キーは TS_REVIEW_GRAPH_DB の真の前方一致拡張であること。
+    // 語幹が同じだけのキー（..._LOG 等）では厳密一致→前方一致の緩和を検出できない。
+    const inline = `[mcp_servers.ts-review-graph]
 command = "npx"
 args = ["-y", "${SPEC}"]
-env = { TS_REVIEW_GRAPH_DB = "/x", TS_REVIEW_GRAPH_LOG = "debug" }
+env = { TS_REVIEW_GRAPH_DB = "/x", TS_REVIEW_GRAPH_DB_PATH = "/keep" }
 `;
-    const result = updateCodexConfig(current, SPEC);
+    const inlineResult = updateCodexConfig(inline, SPEC);
+    expect(inlineResult.content).toContain(`TS_REVIEW_GRAPH_DB_PATH = "/keep"`);
+    expect(inlineResult.content).not.toContain(`TS_REVIEW_GRAPH_DB = "/x"`);
 
-    expect(result.content).toContain(`TS_REVIEW_GRAPH_LOG = "debug"`);
-    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+    const subTable = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "${SPEC}"]
+
+[mcp_servers.ts-review-graph.env]
+TS_REVIEW_GRAPH_DB = "/x"
+TS_REVIEW_GRAPH_DB_PATH = "/keep"
+`;
+    const subResult = updateCodexConfig(subTable, SPEC);
+    expect(subResult.content).toContain(`TS_REVIEW_GRAPH_DB_PATH = "/keep"`);
+    expect(subResult.content).not.toContain(`TS_REVIEW_GRAPH_DB = "/x"`);
   });
 
   it("env 以外のサブテーブルは刈らない", () => {
@@ -505,27 +564,25 @@ describe("updateCodexConfig — fail-closed", () => {
     expect(() => updateCodexConfig(`[mcp_servers.alpha\n`, SPEC)).toThrow(CodexConfigParseError);
   });
 
-  it("インラインテーブル記法のエントリは throw する", () => {
-    const current = `[mcp_servers]\nts-review-graph = { command = "npx", args = ["-y"] }\n`;
-    expect(() => updateCodexConfig(current, SPEC)).toThrow(CodexConfigParseError);
-  });
-
-  it("ドット記法のエントリは throw する", () => {
-    expect(() =>
-      updateCodexConfig(`mcp_servers.ts-review-graph.command = "npx"\n`, SPEC)
-    ).toThrow(CodexConfigParseError);
-  });
-
-  // 祖先側のインラインテーブル。見落とすと「インラインテーブルへ後からテーブル見出しを
-  // 足す」TOML 仕様違反のファイルを書き出し、Codex が project 設定を丸ごと読めなくなる。
-  it("mcp_servers 自体がインラインテーブルなら throw する（自エントリ不在でも）", () => {
-    expect(() =>
-      updateCodexConfig(`mcp_servers = { other = { command = "x" } }\n`, SPEC)
-    ).toThrow(CodexConfigParseError);
-  });
-
-  it("空のインラインテーブル mcp_servers = {} でも throw する", () => {
-    expect(() => updateCodexConfig(`mcp_servers = {}\n`, SPEC)).toThrow(CodexConfigParseError);
+  // インラインテーブル/ドット記法は「読めているが in-place で書き換えられない」ケース。
+  // 実 codex はこれらのファイルを正常にロードするので、全体中止にすると
+  // 利用者は壊れていない設定のせいで install を完走できなくなる。
+  // 末尾へ見出しを足すと TOML 仕様違反になるため、書かずにスキップする。
+  it("インラインテーブル/ドット記法のエントリは書かずにスキップする", () => {
+    const cases = [
+      `[mcp_servers]\nts-review-graph = { command = "npx", args = ["-y"] }\n`,
+      `mcp_servers.ts-review-graph.command = "npx"\n`,
+      `mcp_servers = { other = { command = "x" } }\n`,
+      `mcp_servers = {}\n`,
+    ];
+    for (const current of cases) {
+      const result = updateCodexConfig(current, SPEC);
+      expect(result.content).toBe(current);
+      expect(result.changed).toBe(false);
+      expect(result.skippedReason).toContain("インラインテーブル/ドット記法");
+      // 末尾へ見出しを足していないこと（足すと invalid TOML になる）
+      expect(result.content).not.toContain("[mcp_servers.ts-review-graph]");
+    }
   });
 
   it("兄弟キー mcp_servers.other は throw しない（正当な記法を壊さない）", () => {
