@@ -50,7 +50,7 @@ function createHookFixture() {
 case "$*" in
   *sqlite_master*) printf '1\\n' ;;
   *"SELECT value FROM meta"*) printf '2\\n' ;;
-  *) printf 'src/main.ts|changed\\n' ;;
+  *) printf '7372632F6D61696E2E7473|changed\\n' ;;
 esac
 `
   );

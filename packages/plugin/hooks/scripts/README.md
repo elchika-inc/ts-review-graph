@@ -31,3 +31,23 @@ CLAUDE_CODE_SESSION_ID=<redacted>
 --- stdin ---
 {"session_id":"<redacted>","transcript_path":"<redacted>","cwd":"/path/to/project","prompt_id":"<redacted>","permission_mode":"<redacted>","effort":{"level":"high"},"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/path/to/project/package.json"},"tool_use_id":"<redacted>"}
 ```
+
+## PreToolUse の出力契約
+
+Claude Code 公式ドキュメントは、通常のフックイベントについて次のように説明している。
+
+> For most events, stdout is written to the debug log but not shown in the transcript.
+> The exceptions are `UserPromptSubmit`, `UserPromptExpansion`, and `SessionStart`,
+> where stdout is added as context that Claude can see and act on.
+
+`PreToolUse` の平文 stdout は Claude のコンテキストへ追加されない。Claude にアドバイザリを
+届けるには、`hookSpecificOutput.hookEventName` を `PreToolUse` とし、内容を
+`hookSpecificOutput.additionalContext` に入れた JSON だけを stdout へ出力する必要がある。
+平文などを同じ stdout に混在させると JSON 全体が無効になるため、診断は stderr へ分離する。
+グラフ由来のファイルパスは信頼できないデータとして扱い、制御文字を可視化して、パス内の
+改行が独立した指示行としてモデルコンテキストへ現れないようにする。
+
+2026-08-13 の実セッションでは、一意な文字列 `HOOKPROBE-XQ7742` を平文 stdout に出した
+段階では Claude に届かなかった。一方、同じフックが
+`hookSpecificOutput.additionalContext` の JSON だけを出した段階では、Claude が
+`PreToolUse:Read hook additional context` から内容を受け取ったことを確認した。
