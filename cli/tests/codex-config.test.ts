@@ -128,6 +128,28 @@ env = { TS_REVIEW_GRAPH_DB = "/old/graph.db", NODE_OPTIONS = "--max-old-space-si
     expect(result.content).toContain(`env = { NODE_OPTIONS = "--max-old-space-size=4096" }`);
   });
 
+  it("env の行末コメントとインデントを保つ", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "${SPEC}"]
+  env = { TS_REVIEW_GRAPH_DB = "/x", OTHER = "y" } # 本番だけ上書き
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`  env = { OTHER = "y" } # 本番だけ上書き`);
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+  });
+
+  it("インラインテーブルでない env は解釈せずそのまま残す", () => {
+    // `env = "a{b"` は妥当な TOML。文字列内の波括弧を値の開始と誤認して
+    // 「文字列が閉じられていません」で install 全体を止めてはいけない。
+    for (const value of [`"a{b"`, `["a{b"]`, `"{}"`, `'x{y'`]) {
+      const current = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\nenv = ${value}\n`;
+      const result = updateCodexConfig(current, SPEC);
+      expect(result.content).toContain(`env = ${value}`);
+    }
+  });
+
   it("env サブテーブルでは該当行だけ落とし、他キーと見出しを残す", () => {
     const current = `[mcp_servers.ts-review-graph]
 command = "npx"

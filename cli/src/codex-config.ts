@@ -267,20 +267,31 @@ function splitInlineTableEntries(body: string): string[] {
  * - それ以外 → 書き換えた1行
  */
 function removeStaleEnvKey(raw: string): string | null | undefined {
-  const open = raw.indexOf("{");
-  if (open === -1) return undefined;
-  const close = findMatchingBrace(raw, open);
+  // 値の開始位置はキー→`=`→空白と辿って決める。raw.indexOf("{") では
+  // `env = "a{b"` のように文字列内の波括弧を拾い、妥当な TOML を壊す。
+  const keyPath = readKeyPath(raw, 0);
+  if (!keyPath) return undefined;
+  let cursor = skipWs(raw, keyPath.next);
+  if (raw[cursor] !== "=") return undefined;
+  cursor = skipWs(raw, cursor + 1);
+  if (raw[cursor] !== "{") return undefined; // インラインテーブル以外には触らない
+
+  const close = findMatchingBrace(raw, cursor);
   if (close === null) return undefined;
 
-  const entries = splitInlineTableEntries(raw.slice(open + 1, close));
+  const entries = splitInlineTableEntries(raw.slice(cursor + 1, close));
   const kept = entries.filter((entry) => {
-    const keyPath = readKeyPath(entry, 0);
-    return !(keyPath && keyPath.parts.length === 1 && keyPath.parts[0] === STALE_ENV_KEY);
+    const entryKey = readKeyPath(entry, 0);
+    return !(entryKey && entryKey.parts.length === 1 && entryKey.parts[0] === STALE_ENV_KEY);
   });
 
   if (kept.length === entries.length) return undefined;
   if (kept.length === 0) return null;
-  return `env = { ${kept.map((entry) => entry.trim()).join(", ")} }`;
+
+  // インデントと行末コメントは利用者のものなので持ち越す
+  const indent = raw.slice(0, raw.length - raw.trimStart().length);
+  const trailing = raw.slice(close + 1);
+  return `${indent}env = { ${kept.map((entry) => entry.trim()).join(", ")} }${trailing}`;
 }
 
 // --- ドキュメントの分解 -------------------------------------------------
