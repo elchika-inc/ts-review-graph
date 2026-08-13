@@ -289,7 +289,10 @@ function replacePackageSpecInArgs(raw: string, packageSpec: string): string | nu
         i++;
         continue;
       }
-      if (raw.slice(i + 1, next - 1).startsWith(`${MCP_PACKAGE_NAME}@`)) {
+      // version 固定済み (`name@x.y.z`) と未固定 (`name`) の両方を対象にする。
+      // 未固定を拾わないと、version を固定してあげられないまま素通りする。
+      const token = raw.slice(i + 1, next - 1);
+      if (token === MCP_PACKAGE_NAME || token.startsWith(`${MCP_PACKAGE_NAME}@`)) {
         spans.push({ start: i, end: next });
       }
       i = next;
@@ -597,9 +600,16 @@ function rewriteSectionBody(
         sawArgs = true;
         const raw = lines.slice(item.start, item.end + 1).join("\n");
         const replaced = replacePackageSpecInArgs(raw, packageSpec);
-        // 既存 args に自分の package spec が無ければ、エントリとして壊れているので既定へ揃える
-        if (replaced === null) body.push(...buildArgsLines(packageSpec));
-        else body.push(...replaced.split("\n"));
+        if (replaced === null) {
+          // 既定の args で上書きすると、独自の起動方法（例: command = "node" と
+          // args = ["./dist/server.js"]）を `node -y @elchika-inc/...` という
+          // 起動不能なエントリへ黙って変えてしまう。どう起動したいのかは推測できない。
+          throw new CodexConfigParseError(
+            `[mcp_servers.ts-review-graph] の args に ${MCP_PACKAGE_NAME} の指定が見つかりません。` +
+              "独自の起動方法を設定している場合は手動で version を更新してください"
+          );
+        }
+        body.push(...replaced.split("\n"));
         continue;
       }
       if (head === "env") {

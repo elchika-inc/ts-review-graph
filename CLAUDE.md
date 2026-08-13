@@ -63,14 +63,12 @@ MCP サーバーの**すべての DB オープン経路が同じ実装を参照�
 同じ ABI 不一致が経路によって「原因不明のグラフ未構築」に見える（実障害あり）。
 実装を複製せず core に置くこと。
 
-**重要**: MCP サーバーは DB を開けなかったときに「未構築」と言わない。未構築とオープン失敗の
-出し分けは `packages/mcp-server/src/tools/db-unavailable.ts` が正本。db=null でも動作する
-ツール（現状 `graph_status` と `build_graph`）を追加するときは、ABI 不一致の診断を届ける
-責任も同時に負う。経路は2系統ある——表示系なら呼び出し側から `DbOpenFailure` を受け取って
-表示する（`graph_status`）、自前で `openDb` するならその失敗メッセージを `withAbiGuidance`
-に通す（`build_graph`）。どちらも忘れると、そのツールだけが ABI 不一致を「未構築」または
-原因不明のエラーとして誤報する。挙動は
-`packages/mcp-server/tests/db-unavailable.test.ts` と `tests/server-degraded.test.ts` が固定している。
+**重要**: MCP サーバーは DB を開けなかったときに「未構築」と言わない。db=null でも動作する
+ツールを追加するときは、ABI 診断を届ける責任も同時に負う——忘れると、そのツールだけが
+ABI 不一致を「未構築」や原因不明のエラーとして誤報する。出し分けと2系統の届け方は
+`packages/mcp-server/src/tools/db-unavailable.ts` が正本で、挙動は
+`packages/mcp-server/tests/db-unavailable.test.ts` と
+`packages/mcp-server/tests/server-degraded.test.ts` が固定している。
 
 ## Gotchas
 

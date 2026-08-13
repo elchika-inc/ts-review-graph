@@ -67,10 +67,20 @@ args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
   });
 
   it("command が無いエントリには npx を補う", () => {
-    const current = `[mcp_servers.ts-review-graph]\nargs = ["-y", "old"]\n`;
+    const current = `[mcp_servers.ts-review-graph]\nargs = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]\n`;
     const result = updateCodexConfig(current, SPEC);
 
     expect(result.content).toContain(`command = "npx"`);
+  });
+
+  it("version 未固定の package 指定にも version を入れる", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server", "--log-level", "debug"]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`args = ["-y", "${SPEC}", "--log-level", "debug"]`);
   });
 
   it("利用者が args に足した引数を消さない（version 要素だけ差し替える）", () => {
@@ -101,11 +111,14 @@ args = [
     expect(result.content).toContain(`    "--verbose",`);
   });
 
-  it("args に自分の package spec が無ければ既定へ揃える", () => {
-    const current = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "somethingelse"]\n`;
-    const result = updateCodexConfig(current, SPEC);
-
-    expect(result.content).toContain(`    "${SPEC}",`);
+  it("args に自分の package spec が無ければ書き換えずに throw する", () => {
+    // 既定 args で上書きすると、独自の起動方法を壊した設定へ黙って変えてしまう。
+    // 例: command = "node" のまま `node -y @elchika-inc/...` になり起動不能。
+    const custom = `[mcp_servers.ts-review-graph]
+command = "node"
+args = ["./dist/server.js", "--log-level", "debug"]
+`;
+    expect(() => updateCodexConfig(custom, SPEC)).toThrow(CodexConfigParseError);
   });
 });
 
