@@ -1,0 +1,230 @@
+import { describe, expect, it } from "vitest";
+import { updateCodexConfig, CodexConfigParseError } from "../src/codex-config.js";
+
+const SPEC = "@elchika-inc/ts-review-graph-mcp-server@9.9.9";
+
+const canonical = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = [
+    "-y",
+    "${SPEC}",
+]
+`;
+
+describe("updateCodexConfig — 新規作成", () => {
+  it("空ファイルには version 固定・env なしのエントリだけを書く", () => {
+    const result = updateCodexConfig("", SPEC);
+    expect(result).toEqual({ content: canonical, changed: true });
+    expect(result.content).not.toContain("env");
+  });
+
+  it("既存の他セクションを保ったまま末尾へ追記する", () => {
+    const current = `[mcp_servers.other]\ncommand = "other-bin"\nargs = ["--serve"]\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.changed).toBe(true);
+    expect(result.content).toBe(`${current}\n${canonical}`);
+  });
+});
+
+describe("updateCodexConfig — 冪等性", () => {
+  it("2回目は内容を変えない", () => {
+    const first = updateCodexConfig("", SPEC).content;
+    const second = updateCodexConfig(first, SPEC);
+
+    expect(second.changed).toBe(false);
+    expect(second.content).toBe(first);
+  });
+
+  it("エントリが重複しない", () => {
+    let content = "";
+    for (let i = 0; i < 3; i++) content = updateCodexConfig(content, SPEC).content;
+
+    const occurrences = content.split("[mcp_servers.ts-review-graph]").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it("version だけが違う既存エントリは args を更新する", () => {
+    const old = canonical.replace(SPEC, "@elchika-inc/ts-review-graph-mcp-server@0.0.1");
+    const result = updateCodexConfig(old, SPEC);
+
+    expect(result.changed).toBe(true);
+    expect(result.content).toBe(canonical);
+  });
+});
+
+describe("updateCodexConfig — 古い env の除去", () => {
+  it("インラインテーブルの TS_REVIEW_GRAPH_DB を落とす", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = [
+    "-y",
+    "${SPEC}",
+]
+env = { TS_REVIEW_GRAPH_DB = "/absolute/old/path/graph.db" }
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.changed).toBe(true);
+    expect(result.content).toBe(canonical);
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+  });
+
+  it("env サブテーブルごと落とす", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = [
+    "-y",
+    "${SPEC}",
+]
+
+[mcp_servers.ts-review-graph.env]
+TS_REVIEW_GRAPH_DB = "/absolute/old/path/graph.db"
+
+[mcp_servers.other]
+command = "other-bin"
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+    expect(result.content).not.toContain("[mcp_servers.ts-review-graph.env]");
+    expect(result.content).toContain("[mcp_servers.other]");
+    expect(result.content).toContain(`command = "other-bin"`);
+  });
+
+  it("他エントリの env には触れない", () => {
+    const current = `[mcp_servers.other]
+command = "other-bin"
+env = { TS_REVIEW_GRAPH_DB = "/keep/me/graph.db" }
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`env = { TS_REVIEW_GRAPH_DB = "/keep/me/graph.db" }`);
+  });
+});
+
+describe("updateCodexConfig — 既存内容の保全", () => {
+  it("前後のセクション・コメント・トップレベルキーを保つ", () => {
+    const current = `# codex project config
+trust_level = "trusted"
+
+[mcp_servers.alpha]
+command = "alpha-bin"
+args = [
+    "--flag",
+]
+
+[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
+
+[profiles.default]
+model = "gpt-5"
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain("# codex project config");
+    expect(result.content).toContain(`trust_level = "trusted"`);
+    expect(result.content).toContain("[mcp_servers.alpha]");
+    expect(result.content).toContain(`command = "alpha-bin"`);
+    expect(result.content).toContain("[profiles.default]");
+    expect(result.content).toContain(`model = "gpt-5"`);
+    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).not.toContain("@0.0.1");
+  });
+
+  it("自分のセクションに利用者が足したキーは残す", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
+startup_timeout_ms = 30000
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain("startup_timeout_ms = 30000");
+    expect(result.content).toContain(`    "${SPEC}",`);
+  });
+
+  it("配列内の行頭 [ をテーブル見出しと誤認しない", () => {
+    const current = `[mcp_servers.alpha]
+matrix = [
+["a", "b"],
+["c", "d"],
+]
+command = "alpha-bin"
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`["a", "b"],`);
+    expect(result.content).toContain(`command = "alpha-bin"`);
+    expect(result.content).toContain("[mcp_servers.ts-review-graph]");
+  });
+
+  it("複数行文字列の中身を解釈しない", () => {
+    const current = `[mcp_servers.alpha]
+note = """
+[mcp_servers.ts-review-graph]
+"""
+command = "alpha-bin"
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    // 文字列の中の見出しは既存エントリとして扱わないので、末尾に本物が追記される
+    expect(result.content).toContain(`note = """`);
+    expect(result.content.trimEnd().endsWith(`]`)).toBe(true);
+    expect(result.content).toContain(`    "${SPEC}",`);
+  });
+
+  it("引用付きのテーブル見出しも既存エントリとして認識する", () => {
+    const current = `[mcp_servers."ts-review-graph"]
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    const occurrences = result.content.split("mcp_servers.").length - 1;
+    expect(occurrences).toBe(1);
+    expect(result.content).toContain(`    "${SPEC}",`);
+  });
+});
+
+describe("updateCodexConfig — fail-closed", () => {
+  it("値が閉じないファイルは throw する（呼び出し側は書き込まない）", () => {
+    expect(() => updateCodexConfig(`[mcp_servers.alpha]\nargs = [\n"-y",\n`, SPEC)).toThrow(
+      CodexConfigParseError
+    );
+  });
+
+  it("閉じない文字列は throw する", () => {
+    expect(() => updateCodexConfig(`[mcp_servers.alpha]\ncommand = "npx\n`, SPEC)).toThrow(
+      CodexConfigParseError
+    );
+  });
+
+  it("閉じないテーブル見出しは throw する", () => {
+    expect(() => updateCodexConfig(`[mcp_servers.alpha\n`, SPEC)).toThrow(CodexConfigParseError);
+  });
+
+  it("インラインテーブル記法のエントリは throw する", () => {
+    const current = `[mcp_servers]\nts-review-graph = { command = "npx", args = ["-y"] }\n`;
+    expect(() => updateCodexConfig(current, SPEC)).toThrow(CodexConfigParseError);
+  });
+
+  it("ドット記法のエントリは throw する", () => {
+    expect(() =>
+      updateCodexConfig(`mcp_servers.ts-review-graph.command = "npx"\n`, SPEC)
+    ).toThrow(CodexConfigParseError);
+  });
+
+  it("エントリの重複定義は throw する", () => {
+    expect(() => updateCodexConfig(`${canonical}\n${canonical}`, SPEC)).toThrow(
+      CodexConfigParseError
+    );
+  });
+
+  it("array of tables は throw する", () => {
+    expect(() =>
+      updateCodexConfig(`[[mcp_servers.ts-review-graph]]\ncommand = "npx"\n`, SPEC)
+    ).toThrow(CodexConfigParseError);
+  });
+});

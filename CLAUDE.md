@@ -56,6 +56,18 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 `built_at` / `built_root`）を記録する。`checkGraphHealth()` がこれを使って検疫する。
 `meta` 不在の DB は旧形式として fail-closed で拒否される。
 
+**重要**: Node ABI 不一致の診断 (`formatNpxAbiMismatchGuidance`) は `packages/core/src/diagnostics.ts`
+が正本で、CLI (`install`/`build`/`update`/`status`) と MCP サーバーの degraded mode の
+**両方から参照する共通実装**。片側にだけ診断があると、同じ ABI 不一致が経路によって
+「原因不明のグラフ未構築」に見える（実障害あり）。実装を複製せず core に置くこと。
+`cli/tests/fixtures/abi-core.mjs` は core モジュールを差し替える loader stub だが、
+診断関数だけは本物を再エクスポートしている（stub 化するとテストが空洞になる）。
+
+**重要**: MCP サーバーは `db` が null のとき「DB ファイルが無い（未構築）」と
+「DB を開けなかった」を区別して返す。区別の状態は `server.ts` の `dbFailure` が持ち、
+`build_graph` 後の再オープン成否で更新される。`graph_status` は null チェックの免除対象
+なので、共通分岐だけでなく `graphStatus` にも理由を明示的に渡す必要がある。
+
 ## Gotchas
 
 - **ESM**: 全パッケージ `"type": "module"`。import パスは `.js` 拡張子必須 (TypeScript でも `import ... from './foo.js'`)

@@ -10,3 +10,4 @@ export { writeMeta, readMeta, SCHEMA_VERSION } from "./meta.js";
 export type { GraphMeta } from "./meta.js";
 export { checkGraphHealth } from "./health.js";
 export type { GraphHealth } from "./health.js";
+export { formatNpxAbiMismatchGuidance } from "./diagnostics.js";

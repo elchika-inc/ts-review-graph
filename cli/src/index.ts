@@ -10,11 +10,12 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildMcpServerEntry } from "./mcp-entry.js";
+import { buildMcpServerEntry, mcpServerPackageSpec } from "./mcp-entry.js";
 import {
   formatNpxAbiMismatchGuidance,
   updateGraphGitignore,
 } from "./install-support.js";
+import { updateCodexConfig, CodexConfigParseError } from "./codex-config.js";
 
 const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
 const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
@@ -123,6 +124,24 @@ program
       }
     }
 
+    // 4c. .codex/config.toml も事前に解釈確認 — 解釈できない記法なら書き込みを一切行わない
+    const codexConfigPath = path.join(projectRoot, ".codex/config.toml");
+    let codexUpdate: ReturnType<typeof updateCodexConfig> | null = null;
+    try {
+      const currentCodex = existsSync(codexConfigPath)
+        ? readFileSync(codexConfigPath, "utf-8")
+        : "";
+      codexUpdate = updateCodexConfig(currentCodex, mcpServerPackageSpec);
+    } catch (err) {
+      if (err instanceof CodexConfigParseError) {
+        console.error("⚠ .codex/config.toml を安全に更新できません: " + err.message);
+        console.error("  手動で mcp_servers.ts-review-graph を整理してから再実行してください: " + codexConfigPath);
+      } else {
+        console.error("⚠ .codex/config.toml の読み込みに失敗しました:", err instanceof Error ? err.message : err);
+      }
+      process.exit(1);
+    }
+
     // 5. config.json 書き込み — 存在するパスのみを記録する
     const relPaths = existingPaths.map((p) => toProjectRelative(projectRoot, p));
     try {
@@ -173,6 +192,25 @@ program
       process.exit(1);
     }
     console.log("✓ MCP サーバーを .mcp.json に登録しました");
+
+    // 7b. Codex 用の project 設定にも登録する（.mcp.json は Codex からは読まれない）
+    if (codexUpdate === null) {
+      console.error("⚠ .codex/config.toml の更新内容が未計算です — install を中止します");
+      process.exit(1);
+    }
+    if (codexUpdate.changed) {
+      try {
+        mkdirSync(path.dirname(codexConfigPath), { recursive: true });
+        writeFileSync(codexConfigPath, codexUpdate.content);
+        console.log("✓ MCP サーバーを .codex/config.toml に登録しました (Codex 用)");
+      } catch (err) {
+        console.error("⚠ .codex/config.toml の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+        console.error("  手動で mcp_servers.ts-review-graph を登録してください: " + codexConfigPath);
+        process.exit(1);
+      }
+    } else {
+      console.log("✓ .codex/config.toml は既に最新です (Codex 用)");
+    }
 
     // 8. CLAUDE.md に使用方法セクションを追記（べき等）
     const claudeMdPath = path.join(projectRoot, "CLAUDE.md");

@@ -40,7 +40,7 @@ Graph size: 1,191 nodes / 1,400+ edges (Cloudflare Workers monorepo)
 npx @elchika-inc/ts-review-graph@latest install --tsconfig tsconfig.json
 ```
 
-Config is saved to `.ts-review-graph/config.json`, MCP server is registered in `.mcp.json`, and usage instructions are appended to `CLAUDE.md`. Restart Claude Code and the MCP server connects automatically.
+Config is saved to `.ts-review-graph/config.json`, MCP server is registered in `.mcp.json` (Claude Code) and `.codex/config.toml` (Codex), and usage instructions are appended to `CLAUDE.md`. Restart Claude Code and the MCP server connects automatically.
 
 生成される `.mcp.json` は、MCP server を `install` に使用した CLI と同じ version に固定します。これにより、セッション起動時に古い graph reader や未確認の将来の `latest` release が選ばれることを防ぎます。トレードオフとして修正版は自動受信されないため、ts-review-graph の更新時は更新後の CLI version で、初回と同じ `--tsconfig` / `--db` option を指定して `install` を再実行してください。
 
@@ -67,6 +67,27 @@ claude plugin install ts-review-graph
 plugin 自体はグラフを構築しません。plugin 導入前または導入後に、対象 project で CLI の `install` を別途実行してください。既に `config.json` がある場合は `build` でも再構築できますが、plugin は既定の `.ts-review-graph/graph.db` だけを参照するため、custom `--db` は使わないでください。
 
 plugin を更新するには `claude plugin update ts-review-graph` を実行し、Claude Code を再起動します。CLI も更新する場合は、更新後の CLI version で初回と同じ option を指定して `install` を再実行してください。
+
+### Codex
+
+`install` は Claude Code 用の `.mcp.json` に加えて、Codex の project 単位設定 `.codex/config.toml` にも同じ MCP server を登録します。書き込まれる内容は次の形で、version は `install` に使用した CLI と同じものに固定されます。
+
+```toml
+[mcp_servers.ts-review-graph]
+command = "npx"
+args = [
+    "-y",
+    "@elchika-inc/ts-review-graph-mcp-server@0.5.5",
+]
+```
+
+既に `[mcp_servers.ts-review-graph]` がある場合は `args` の version だけを更新し、エントリを重複させません。他の `[mcp_servers.*]` エントリや他のセクションには触れません。過去の version が書いていた絶対パスの `TS_REVIEW_GRAPH_DB` が残っている場合は除去します（Codex 用エントリに `env` は書きません）。
+
+既知の制限:
+
+- **project 単位の設定が有効なのは `trust_level = "trusted"` の project だけです。** trust されていない project では Codex がこのファイルの `mcp_servers` を読み込まないため、`~/.codex/config.toml` へ手動で登録する必要があります。
+- **Codex では MCP tools と skills は動作しますが、hooks は動作しません。** Claude Code plugin が提供する `Read` 時のブラスト半径アドバイザリ表示は Codex では働かないため、`get_minimal_context` を明示的に呼んでください。
+- custom `--db` を指定した場合でも Codex 用エントリには `env` を書かないため、Codex 側は既定の `.ts-review-graph/graph.db` を参照します。custom DB を Codex から使うには `.codex/config.toml` へ手動で `env` を追加してください。
 
 ## Usage
 

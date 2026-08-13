@@ -3,6 +3,7 @@ import {
   formatNpxAbiMismatchGuidance,
   updateGraphGitignore,
 } from "../src/install-support.js";
+import { formatNpxAbiMismatchGuidance as coreGuidance } from "@elchika-inc/ts-review-graph-core";
 
 const expectedIgnoreBlock = `# ts-review-graph (graph.db はビルド成果物、config.json はコミット対象)
 .ts-review-graph/graph.db
@@ -60,6 +61,10 @@ describe("updateGraphGitignore", () => {
 });
 
 describe("formatNpxAbiMismatchGuidance", () => {
+  it("CLI が参照するのは core の実装そのもの（実装が二重化していない）", () => {
+    expect(formatNpxAbiMismatchGuidance).toBe(coreGuidance);
+  });
+
   it("ABI 不一致ではエラー中の npx キャッシュを安全な削除コマンドで案内する", () => {
     const message = `The module '/Users/test user/.npm/_npx/08af52269914770e/node_modules/better-sqlite3/build/Release/better_sqlite3.node'
 was compiled against a different Node.js version using NODE_MODULE_VERSION 137.`;

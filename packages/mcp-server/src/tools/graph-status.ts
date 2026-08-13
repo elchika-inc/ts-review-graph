@@ -1,8 +1,20 @@
 import type { Db } from "@elchika-inc/ts-review-graph-core";
 import type { ToolResult } from "./types.js";
+import { formatDbOpenFailureLines, type DbOpenFailure } from "./db-unavailable.js";
 
-export function graphStatus(db: Db | null): ToolResult {
+export function graphStatus(db: Db | null, dbFailure: DbOpenFailure | null = null): ToolResult {
   if (!db) {
+    if (dbFailure) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: ["ts-review-graph status:", ...formatDbOpenFailureLines(dbFailure)].join("\n"),
+          },
+        ],
+        isError: true,
+      };
+    }
     return {
       content: [
         {
