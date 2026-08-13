@@ -7,6 +7,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { openDb, formatNpxAbiMismatchGuidance } from "@elchika-inc/ts-review-graph-core";
 import { registerTools, TOOL_DEFINITIONS, type DbOpenFailure } from "./tools/index.js";
+import { openGraphDb } from "./open-graph-db.js";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -30,13 +31,12 @@ async function main(): Promise<void> {
   // null は「DB ファイルが無い（＝本当に未構築）」を意味し、失敗と区別される。
   let dbFailure: DbOpenFailure | null = null;
   if (existsSync(DB_PATH)) {
-    try {
-      db = openDb(DB_PATH);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      dbFailure = { dbPath: DB_PATH, message };
-      console.error(`[ts-review-graph] DB オープン失敗 — degraded mode で起動します: ${message}`);
-      for (const line of formatNpxAbiMismatchGuidance(message)) {
+    const opened = openGraphDb(DB_PATH, openDb);
+    db = opened.db;
+    dbFailure = opened.failure;
+    if (dbFailure) {
+      console.error(`[ts-review-graph] DB オープン失敗 — degraded mode で起動します: ${dbFailure.message}`);
+      for (const line of formatNpxAbiMismatchGuidance(dbFailure.message)) {
         console.error(`[ts-review-graph]   ${line}`);
       }
     }
@@ -52,19 +52,18 @@ async function main(): Promise<void> {
 
       // build_graph が成功した後、DB ファイルが存在すれば接続を初期化/再オープンする
       if (request.params.name === "build_graph" && result.isError !== true && existsSync(DB_PATH)) {
-        try {
-          const newDb = openDb(DB_PATH);
+        const reopened = openGraphDb(DB_PATH, openDb);
+        if (reopened.db) {
           const oldDb = db;
-          db = newDb;
+          db = reopened.db;
           dbFailure = null;
           try { oldDb?.close(); } catch (closeErr) {
             console.error(`[ts-review-graph] 旧 DB クローズに失敗: ${closeErr instanceof Error ? closeErr.message : String(closeErr)}`);
           }
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          dbFailure = { dbPath: DB_PATH, message };
-          console.error(`[ts-review-graph] ビルド後の DB 再接続に失敗: ${message}`);
-          for (const line of formatNpxAbiMismatchGuidance(message)) {
+        } else {
+          dbFailure = reopened.failure;
+          console.error(`[ts-review-graph] ビルド後の DB 再接続に失敗: ${reopened.failure?.message}`);
+          for (const line of formatNpxAbiMismatchGuidance(reopened.failure?.message ?? "")) {
             console.error(`[ts-review-graph]   ${line}`);
           }
         }

@@ -77,17 +77,19 @@ plugin を更新するには `claude plugin update ts-review-graph` を実行し
 command = "npx"
 args = [
     "-y",
-    "@elchika-inc/ts-review-graph-mcp-server@0.5.5",
+    "@elchika-inc/ts-review-graph-mcp-server@<install に使用した CLI と同じ version>",
 ]
 ```
 
-既に `[mcp_servers.ts-review-graph]` がある場合は `args` の version だけを更新し、エントリを重複させません。他の `[mcp_servers.*]` エントリや他のセクションには触れません。過去の version が書いていた絶対パスの `TS_REVIEW_GRAPH_DB` が残っている場合は除去します（Codex 用エントリに `env` は書きません）。
+既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させず、`args` の version を更新します。`command` を独自の値へ変えている場合はそれを保持し、`command` が無いときだけ `"npx"` を補います。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写された絶対パスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
+
+既存の `.codex/config.toml` に安全に更新できない記法（`mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法・`[[...]]` で定義している、値や文字列が閉じていない等）が含まれる場合、`install` は**一切のファイルを書かずに中止します**（`.mcp.json` と `.ts-review-graph/config.json` も作成されません）。表示されたパスの該当箇所を通常のテーブル見出し記法へ手動で整理してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
 
 既知の制限:
 
-- **project 単位の設定が有効なのは `trust_level = "trusted"` の project だけです。** trust されていない project では Codex がこのファイルの `mcp_servers` を読み込まないため、`~/.codex/config.toml` へ手動で登録する必要があります。
-- **Codex では MCP tools と skills は動作しますが、hooks は動作しません。** Claude Code plugin が提供する `Read` 時のブラスト半径アドバイザリ表示は Codex では働かないため、`get_minimal_context` を明示的に呼んでください。
-- custom `--db` を指定した場合でも Codex 用エントリには `env` を書かないため、Codex 側は既定の `.ts-review-graph/graph.db` を参照します。custom DB を Codex から使うには `.codex/config.toml` へ手動で `env` を追加してください。
+- **project 単位の設定が読まれるのは trust 済みの project だけです。** trust されていない project では Codex が `.codex/config.toml` の `mcp_servers` を読み込まないため、`~/.codex/config.toml` へ同じ `[mcp_servers.ts-review-graph]` を手動で登録してください。trust 状態は `~/.codex/config.toml` 側に `trust_level = "trusted"` として記録されます。
+- **Codex では MCP tools と skills は動作しますが、Claude Code plugin の hooks は読み込まれません。** plugin が提供する `Read` 時のブラスト半径アドバイザリ表示は Codex では働きません（Codex 自身の hooks 機構とは別物です）。`install` が使用方法を追記するのは `CLAUDE.md` なので、Codex に恒常的に守らせたい場合は同じ内容を `AGENTS.md` へコピーしてください。
+- custom `--db` を指定した場合でも Codex 用エントリには `env` を書かないため、Codex 側は既定の `.ts-review-graph/graph.db` を参照します。`.codex/config.toml` へ手動で `TS_REVIEW_GRAPH_DB` を足しても次の `install` で除去されるため、custom DB を Codex から使う場合は `~/.codex/config.toml` 側のエントリか、Codex 起動時の環境変数で指定してください。
 
 ## Usage
 

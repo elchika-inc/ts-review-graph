@@ -19,6 +19,10 @@ export interface CodexConfigUpdate {
 
 const SERVER_TABLE_PATH = ["mcp_servers", "ts-review-graph"] as const;
 
+// 旧 version が .mcp.json から写した絶対パス。Codex 用エントリには env を書かない方針のため除去する。
+// 利用者が置いた他の env キーには触れない。
+const STALE_ENV_KEY = "TS_REVIEW_GRAPH_DB";
+
 // --- キーパスの読み取り -------------------------------------------------
 
 function skipWs(source: string, index: number): number {
@@ -27,16 +31,44 @@ function skipWs(source: string, index: number): number {
   return i;
 }
 
+const SIMPLE_ESCAPES: Record<string, string> = {
+  b: "\b",
+  t: "\t",
+  n: "\n",
+  f: "\f",
+  r: "\r",
+  '"': '"',
+  "\\": "\\",
+};
+
+/**
+ * 基本文字列キーのエスケープを復号する。
+ * 復号しないと `"ts-review-graph"` が自セクションと認識されず、
+ * 重複セクションを追記して TOML を壊す（fail-closed 設計の中の唯一の fail-open だった）。
+ */
+function decodeEscape(source: string, i: number): { text: string; next: number } | null {
+  const marker = source[i + 1];
+  if (marker === undefined) return null;
+  if (marker in SIMPLE_ESCAPES) return { text: SIMPLE_ESCAPES[marker]!, next: i + 2 };
+  if (marker === "u" || marker === "U") {
+    const width = marker === "u" ? 4 : 8;
+    const digits = source.slice(i + 2, i + 2 + width);
+    if (digits.length !== width || !/^[0-9A-Fa-f]+$/.test(digits)) return null;
+    return { text: String.fromCodePoint(Number.parseInt(digits, 16)), next: i + 2 + width };
+  }
+  return null;
+}
+
 function readKeyPart(source: string, index: number): { part: string; next: number } | null {
   if (source[index] === '"') {
     let i = index + 1;
     let out = "";
     while (i < source.length) {
       if (source[i] === "\\") {
-        // エスケープの厳密な復号は不要（比較対象は ASCII キーのみ）。
-        // \" を終端と誤認しないよう2文字進めることだけが目的。
-        out += source[i + 1] ?? "";
-        i += 2;
+        const decoded = decodeEscape(source, i);
+        if (!decoded) return null;
+        out += decoded.text;
+        i = decoded.next;
         continue;
       }
       if (source[i] === '"') return { part: out, next: i + 1 };
@@ -140,6 +172,115 @@ function scanLine(line: string, state: ScanState): void {
     }
     i++;
   }
+}
+
+// --- 文字列全体の走査（インラインテーブルの部分編集用） -----------------
+//
+// scanLine は「行をまたぐ複数行文字列」を状態として持つため行単位でしか使えない。
+// インラインテーブルの中身は1つの文字列として扱うので、閉じない文字列は即エラーでよい。
+
+/** text[i] が文字列・コメントの開始ならその直後の位置を返す。該当しなければ null。 */
+function skipAtomic(text: string, i: number): number | null {
+  const char = text[i];
+  if (char === "#") {
+    const newline = text.indexOf("\n", i);
+    return newline === -1 ? text.length : newline;
+  }
+  if (text.startsWith('"""', i) || text.startsWith("'''", i)) {
+    const delimiter = text.startsWith('"""', i) ? '"""' : "'''";
+    const close = text.indexOf(delimiter, i + 3);
+    if (close === -1) throw new CodexConfigParseError("複数行文字列が閉じられていません");
+    return close + 3;
+  }
+  if (char === '"') {
+    let j = i + 1;
+    for (;;) {
+      if (j >= text.length) throw new CodexConfigParseError("基本文字列が閉じられていません");
+      if (text[j] === "\\") {
+        j += 2;
+        continue;
+      }
+      if (text[j] === '"') return j + 1;
+      j++;
+    }
+  }
+  if (char === "'") {
+    const close = text.indexOf("'", i + 1);
+    if (close === -1) throw new CodexConfigParseError("リテラル文字列が閉じられていません");
+    return close + 1;
+  }
+  return null;
+}
+
+/** open 位置の `{` に対応する `}` の位置を返す。見つからなければ null。 */
+function findMatchingBrace(text: string, open: number): number | null {
+  let depth = 0;
+  let i = open;
+  while (i < text.length) {
+    const skipped = skipAtomic(text, i);
+    if (skipped !== null) {
+      i = skipped;
+      continue;
+    }
+    const char = text[i]!;
+    if (char === "[" || char === "{") depth++;
+    if (char === "]" || char === "}") {
+      depth--;
+      if (depth === 0) return i;
+      if (depth < 0) return null;
+    }
+    i++;
+  }
+  return null;
+}
+
+/** インラインテーブルの中身を、深さ0のカンマで要素へ分割する。 */
+function splitInlineTableEntries(body: string): string[] {
+  const entries: string[] = [];
+  let depth = 0;
+  let start = 0;
+  let i = 0;
+  while (i < body.length) {
+    const skipped = skipAtomic(body, i);
+    if (skipped !== null) {
+      i = skipped;
+      continue;
+    }
+    const char = body[i]!;
+    if (char === "[" || char === "{") depth++;
+    else if (char === "]" || char === "}") depth--;
+    else if (char === "," && depth === 0) {
+      entries.push(body.slice(start, i));
+      start = i + 1;
+    }
+    i++;
+  }
+  const tail = body.slice(start);
+  if (tail.trim() !== "") entries.push(tail);
+  return entries;
+}
+
+/**
+ * `env = { ... }` から STALE_ENV_KEY だけを取り除く。
+ * - 該当キーが無い / インラインテーブルでない → undefined（元の行をそのまま残す）
+ * - 取り除いた結果 空になった → null（env キーごと削除する）
+ * - それ以外 → 書き換えた1行
+ */
+function removeStaleEnvKey(raw: string): string | null | undefined {
+  const open = raw.indexOf("{");
+  if (open === -1) return undefined;
+  const close = findMatchingBrace(raw, open);
+  if (close === null) return undefined;
+
+  const entries = splitInlineTableEntries(raw.slice(open + 1, close));
+  const kept = entries.filter((entry) => {
+    const keyPath = readKeyPath(entry, 0);
+    return !(keyPath && keyPath.parts.length === 1 && keyPath.parts[0] === STALE_ENV_KEY);
+  });
+
+  if (kept.length === entries.length) return undefined;
+  if (kept.length === 0) return null;
+  return `env = { ${kept.map((entry) => entry.trim()).join(", ")} }`;
 }
 
 // --- ドキュメントの分解 -------------------------------------------------
@@ -280,26 +421,45 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
     if (item.kind !== "key") continue;
 
     // 自分のセクション（およびその子テーブル）の外側から
-    // mcp_servers.ts-review-graph.* を定義している記法は安全に更新できない。
+    // mcp_servers.ts-review-graph を値として定義している記法は安全に更新できない。
+    // 判定は双方向に行う必要がある:
+    //   - キーが対象パスの子孫  … [mcp_servers] + `ts-review-graph = { ... }`
+    //   - キーが対象パスの祖先  … ルートの `mcp_servers = { ... }`
+    // 後者を見落とすと、インラインテーブルへ後からテーブル見出しを足す
+    // TOML 仕様違反のファイルを書き出し、Codex がその project 設定を丸ごと読めなくなる。
     if (startsWithPath(currentTable, SERVER_TABLE_PATH)) continue;
     const absolute = [...currentTable, ...item.parts];
-    if (startsWithPath(absolute, SERVER_TABLE_PATH)) {
+    if (
+      startsWithPath(absolute, SERVER_TABLE_PATH) ||
+      startsWithPath(SERVER_TABLE_PATH, absolute)
+    ) {
       throw new CodexConfigParseError(
-        "mcp_servers.ts-review-graph がインラインテーブル/ドット記法で定義されています。手動で整理してください"
+        `${absolute.join(".")} が値（インラインテーブル/ドット記法）として定義されています。` +
+          "[mcp_servers.ts-review-graph] のテーブル見出し記法へ手動で整理してください"
       );
     }
   }
 
+  // [mcp_servers.ts-review-graph.env] からは古い TS_REVIEW_GRAPH_DB の行だけを落とす。
+  // 「次の見出しまで」を一括で落とすと、次セクションの前置コメントまで巻き添えにする。
   const dropped = new Set<number>();
   for (const index of subTableIndexes) {
     const header = items[index]!;
     if (header.kind !== "header") continue;
-    // 自分のエントリ配下の env サブテーブルだけ落とす（env は書かない方針のため）
     if (!samePath(header.parts, [...SERVER_TABLE_PATH, "env"])) continue;
-    dropped.add(index);
+
+    let remainingKeys = 0;
     for (let i = index + 1; i < items.length && items[i]!.kind !== "header"; i++) {
-      dropped.add(i);
+      const entry = items[i]!;
+      if (entry.kind !== "key") continue;
+      if (entry.parts.length === 1 && entry.parts[0] === STALE_ENV_KEY) {
+        dropped.add(i);
+        continue;
+      }
+      remainingKeys++;
     }
+    // 残るキーが無くなったサブテーブルは見出しごと落とす（コメント・空行は残す）
+    if (remainingKeys === 0) dropped.add(index);
   }
 
   const output: string[] = [];
@@ -359,7 +519,8 @@ function rewriteSectionBody(
           throw new CodexConfigParseError("[mcp_servers.ts-review-graph] に command が重複しています");
         }
         sawCommand = true;
-        body.push(`command = "npx"`);
+        // 利用者が変えた command は保持する（更新するのは args の version だけ）
+        body.push(...lines.slice(item.start, item.end + 1));
         continue;
       }
       if (head === "args" && rest.length === 0) {
@@ -370,8 +531,22 @@ function rewriteSectionBody(
         body.push(...buildArgsLines(packageSpec));
         continue;
       }
-      // env（インラインテーブル・env.KEY のドット記法とも）は書かない方針のため除去する
-      if (head === "env") continue;
+      if (head === "env") {
+        // 古い TS_REVIEW_GRAPH_DB だけを除去し、利用者が置いた他の env キーは残す
+        if (rest.length > 0) {
+          if (rest.length === 1 && rest[0] === STALE_ENV_KEY) continue; // env.TS_REVIEW_GRAPH_DB
+          body.push(...lines.slice(item.start, item.end + 1));
+          continue;
+        }
+        const rewritten = removeStaleEnvKey(lines.slice(item.start, item.end + 1).join("\n"));
+        if (rewritten === null) continue; // env が空になった
+        if (rewritten === undefined) {
+          body.push(...lines.slice(item.start, item.end + 1));
+          continue;
+        }
+        body.push(rewritten);
+        continue;
+      }
     }
 
     body.push(...lines.slice(item.start, item.end + 1));

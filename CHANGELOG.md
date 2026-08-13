@@ -8,12 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.5]
 
 ### Added
-- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした（version 固定・`env` なし・既存エントリとは重複しない冪等な追記）
-- README に Codex での利用方法と既知の制限（`trust_level = "trusted"` の project でのみ project 単位設定が有効・Codex では hooks が動作しない）を追記した
+- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` の version だけを更新する（`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
+- 安全に更新できない記法を含む既存の `.codex/config.toml` に対しては、`install` が一切のファイルを書かずに中止する（fail-closed）
+- `uninstall` が `.codex/config.toml` の手動削除を案内するようにした
+- README に Codex での利用方法と既知の制限（trust 済み project でのみ project 単位設定が読まれる・Claude Code plugin の hooks は Codex では読み込まれない）を追記した
 
 ### Fixed
 - MCP サーバーが DB のオープンに失敗したとき、全ツールが「グラフ未構築 — build_graph を呼び出してください」を返して原因を隠していた問題を、オープン失敗と未構築を区別し、失敗理由と（Node ABI 不一致なら）npx キャッシュ削除の復旧手順を返すよう修正した
-- `install` が既存の `.codex/config.toml` に残った絶対パスの `TS_REVIEW_GRAPH_DB` を除去するようにした
+- degraded mode が案内する復旧経路である `build_graph` 自体の DB オープン失敗に、ABI 不一致の復旧手順が付いていなかった問題を修正した
 
 ### Changed
 - Node ABI 不一致の診断を `packages/core` へ移し、CLI と MCP サーバーが同一の実装を参照するようにした（CLI の出力は変更なし）

@@ -94,7 +94,7 @@ env = { TS_REVIEW_GRAPH_DB = "/old/absolute/path/.ts-review-graph/graph.db" }
     expect(updated).not.toContain("/old/absolute/path");
   });
 
-  it("解釈できない .codex/config.toml では何も書き込まずに失敗する", () => {
+  it("解釈できない .codex/config.toml では設定ファイル群を書かずに失敗する", () => {
     const root = createProject();
     mkdirSync(path.join(root, ".codex"), { recursive: true });
     const broken = `[mcp_servers]\nts-review-graph = { command = "npx" }\n`;
@@ -112,7 +112,8 @@ env = { TS_REVIEW_GRAPH_DB = "/old/absolute/path/.ts-review-graph/graph.db" }
 
     expect(status).toBe(1);
     expect(stderr).toContain(".codex/config.toml を安全に更新できません");
-    // 部分書き込みを残さない — 設定ファイルも .mcp.json も config.json も変わっていないこと
+    // 中止時点までに走るのは既存の冪等な準備手順（.ts-review-graph/ignore 作成・.gitignore 追記）
+    // のみで、設定ファイル群は一切書かれない
     expect(readCodexConfig(root)).toBe(broken);
     expect(() => readFileSync(path.join(root, ".mcp.json"), "utf-8")).toThrow();
     expect(() => readFileSync(path.join(root, ".ts-review-graph/config.json"), "utf-8")).toThrow();

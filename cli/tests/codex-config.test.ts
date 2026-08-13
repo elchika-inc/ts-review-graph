@@ -53,6 +53,27 @@ describe("updateCodexConfig — 冪等性", () => {
   });
 });
 
+describe("updateCodexConfig — 既存エントリの尊重", () => {
+  it("利用者が変えた command は上書きしない（更新するのは args だけ）", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "bunx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`command = "bunx"`);
+    expect(result.content).not.toContain(`command = "npx"`);
+    expect(result.content).toContain(`    "${SPEC}",`);
+  });
+
+  it("command が無いエントリには npx を補う", () => {
+    const current = `[mcp_servers.ts-review-graph]\nargs = ["-y", "old"]\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`command = "npx"`);
+  });
+});
+
 describe("updateCodexConfig — 古い env の除去", () => {
   it("インラインテーブルの TS_REVIEW_GRAPH_DB を落とす", () => {
     const current = `[mcp_servers.ts-review-graph]
@@ -90,6 +111,71 @@ command = "other-bin"
     expect(result.content).not.toContain("[mcp_servers.ts-review-graph.env]");
     expect(result.content).toContain("[mcp_servers.other]");
     expect(result.content).toContain(`command = "other-bin"`);
+  });
+
+  it("自分の env の他のキーは残し、TS_REVIEW_GRAPH_DB だけ落とす", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = [
+    "-y",
+    "${SPEC}",
+]
+env = { TS_REVIEW_GRAPH_DB = "/old/graph.db", NODE_OPTIONS = "--max-old-space-size=4096" }
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+    expect(result.content).toContain(`env = { NODE_OPTIONS = "--max-old-space-size=4096" }`);
+  });
+
+  it("env サブテーブルでは該当行だけ落とし、他キーと見出しを残す", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "${SPEC}"]
+
+[mcp_servers.ts-review-graph.env]
+TS_REVIEW_GRAPH_DB = "/old/graph.db"
+NODE_OPTIONS = "--trace-warnings"
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+    expect(result.content).toContain("[mcp_servers.ts-review-graph.env]");
+    expect(result.content).toContain(`NODE_OPTIONS = "--trace-warnings"`);
+  });
+
+  it("env.TS_REVIEW_GRAPH_DB のドット記法も落とす", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "${SPEC}"]
+env.TS_REVIEW_GRAPH_DB = "/old/graph.db"
+env.NODE_OPTIONS = "--trace-warnings"
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+    expect(result.content).toContain(`env.NODE_OPTIONS = "--trace-warnings"`);
+  });
+
+  it("env サブテーブル削除が次セクションの前置コメントを巻き込まない", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "${SPEC}"]
+
+[mcp_servers.ts-review-graph.env]
+TS_REVIEW_GRAPH_DB = "/old/graph.db"
+
+# 次のサーバーの説明
+# 2行目
+[mcp_servers.other]
+command = "other-bin"
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain("# 次のサーバーの説明");
+    expect(result.content).toContain("# 2行目");
+    expect(result.content).toContain("[mcp_servers.other]");
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
   });
 
   it("他エントリの env には触れない", () => {
@@ -175,6 +261,17 @@ command = "alpha-bin"
     expect(result.content).toContain(`    "${SPEC}",`);
   });
 
+  it("エスケープを含む引用見出しも既存エントリとして認識する（重複追記しない）", () => {
+    const current = `[mcp_servers."ts\\u002Dreview\\u002Dgraph"]
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content.split("mcp_servers.").length - 1).toBe(1);
+    expect(result.content).toContain(`    "${SPEC}",`);
+  });
+
   it("引用付きのテーブル見出しも既存エントリとして認識する", () => {
     const current = `[mcp_servers."ts-review-graph"]
 command = "npx"
@@ -214,6 +311,30 @@ describe("updateCodexConfig — fail-closed", () => {
     expect(() =>
       updateCodexConfig(`mcp_servers.ts-review-graph.command = "npx"\n`, SPEC)
     ).toThrow(CodexConfigParseError);
+  });
+
+  // 祖先側のインラインテーブル。見落とすと「インラインテーブルへ後からテーブル見出しを
+  // 足す」TOML 仕様違反のファイルを書き出し、Codex が project 設定を丸ごと読めなくなる。
+  it("mcp_servers 自体がインラインテーブルなら throw する（自エントリ不在でも）", () => {
+    expect(() =>
+      updateCodexConfig(`mcp_servers = { other = { command = "x" } }\n`, SPEC)
+    ).toThrow(CodexConfigParseError);
+  });
+
+  it("空のインラインテーブル mcp_servers = {} でも throw する", () => {
+    expect(() => updateCodexConfig(`mcp_servers = {}\n`, SPEC)).toThrow(CodexConfigParseError);
+  });
+
+  it("兄弟キー mcp_servers.other は throw しない（正当な記法を壊さない）", () => {
+    const result = updateCodexConfig(`mcp_servers.other.command = "x"\n`, SPEC);
+    expect(result.content).toContain(`mcp_servers.other.command = "x"`);
+    expect(result.content).toContain("[mcp_servers.ts-review-graph]");
+  });
+
+  it("[mcp_servers] という見出し自体は throw しない", () => {
+    const result = updateCodexConfig(`[mcp_servers]\nother = { command = "x" }\n`, SPEC);
+    expect(result.content).toContain("[mcp_servers]");
+    expect(result.content).toContain("[mcp_servers.ts-review-graph]");
   });
 
   it("エントリの重複定義は throw する", () => {

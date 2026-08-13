@@ -476,6 +476,12 @@ program
       }
     }
 
+    const codexPath = path.join(projectRoot, ".codex/config.toml");
+    if (existsSync(codexPath)) {
+      console.log(".codex/config.toml の [mcp_servers.ts-review-graph] も手動で削除してください");
+      console.log(`  ${codexPath}`);
+    }
+
     console.log("グラフデータ (.ts-review-graph/) は手動で削除してください");
     console.log("  rm -rf .ts-review-graph/");
     console.log(".gitignore の .ts-review-graph/graph.db 行も手動で削除してください");
