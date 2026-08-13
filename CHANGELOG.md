@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-08-13
+
+### Fixed
+- PreToolUse(Read) hook のブラスト半径と旧形式グラフ警告を、Claude に届かない平文 stdout ではなく `hookSpecificOutput.additionalContext` の構造化 JSON として出力するよう修正した
+- フックが生成する JSON で、ファイルパスに含まれる引用符・バックスラッシュ・改行・タブ・その他の制御文字を追加依存なしでエスケープするよう修正した
+
 ## [0.5.2] - 2026-08-12
 
 ### Added

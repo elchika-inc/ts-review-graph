@@ -71,8 +71,12 @@ describe("pre-read.sh と core の乖離検知", () => {
         encoding: "utf8",
         env: { ...process.env, TS_REVIEW_GRAPH_DB: legacyDb },
       });
-      expect(output).toContain("グラフが旧形式です");
-      expect(output).not.toContain("Blast radius for:");
+      const payload = JSON.parse(output) as {
+        hookSpecificOutput: { hookEventName: string; additionalContext: string };
+      };
+      expect(payload.hookSpecificOutput.hookEventName).toBe("PreToolUse");
+      expect(payload.hookSpecificOutput.additionalContext).toContain("グラフが旧形式です");
+      expect(payload.hookSpecificOutput.additionalContext).not.toContain("Blast radius for:");
     } finally {
       for (const suffix of ["", "-wal", "-shm"]) {
         const file = legacyDb + suffix;
@@ -94,10 +98,14 @@ describe("pre-read.sh と core の乖離検知", () => {
         encoding: "utf8",
         env: { ...process.env, TS_REVIEW_GRAPH_DB: currentDb },
       });
-      expect(output).toContain("TRUNCATED");
-      expect(output).not.toContain("READ THESE FILES ONLY");
-      expect(output).not.toContain("SKIP all other files");
-      const resultLines = output.split("\n").filter((line) => line.startsWith("  "));
+      const payload = JSON.parse(output) as {
+        hookSpecificOutput: { hookEventName: string; additionalContext: string };
+      };
+      const context = payload.hookSpecificOutput.additionalContext;
+      expect(context).toContain("TRUNCATED");
+      expect(context).not.toContain("READ THESE FILES ONLY");
+      expect(context).not.toContain("SKIP all other files");
+      const resultLines = context.split("\n").filter((line) => line.startsWith("  "));
       expect(resultLines).toHaveLength(20);
       expect(new Set(resultLines.map((line) => line.trim().split(/\s{2}/)[0])).size).toBe(20);
 
