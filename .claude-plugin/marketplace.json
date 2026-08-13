@@ -9,7 +9,7 @@
       "name": "ts-review-graph",
       "source": "./packages/plugin",
       "description": "ブラスト半径を使った Claude Code の commands・hooks・skills",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "license": "MIT",
       "keywords": ["typescript", "dependency-graph", "code-review", "mcp"],
       "category": "development"
