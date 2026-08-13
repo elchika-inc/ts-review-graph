@@ -28,6 +28,10 @@ function reportDatabaseOpenFailure(prefix: string, err: unknown): void {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 const CONFIG_FILE_NAME = ".ts-review-graph/config.json";
 
 interface TsReviewGraphConfig {
@@ -115,13 +119,28 @@ program
     const mcpJsonPath = path.join(projectRoot, ".mcp.json");
     let mcpJson: Record<string, unknown> = {};
     if (existsSync(mcpJsonPath)) {
+      let parsed: unknown;
       try {
-        mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf-8")) as Record<string, unknown>;
+        parsed = JSON.parse(readFileSync(mcpJsonPath, "utf-8"));
       } catch {
         console.error("⚠ .mcp.json のパースに失敗しました。既存の設定が破損しています。");
         console.error("  手動で修正するか削除してから再実行してください: " + mcpJsonPath);
         process.exit(1);
       }
+      // 構文だけでなく形も見る。配列や非オブジェクトのまま進むと、登録したつもりで
+      // 何も書かれない（成功と報告する）か、生の TypeError で異常終了する。
+      if (!isPlainObject(parsed)) {
+        console.error("⚠ .mcp.json のトップレベルがオブジェクトではありません。");
+        console.error("  手動で修正するか削除してから再実行してください: " + mcpJsonPath);
+        process.exit(1);
+      }
+      const existingServers = parsed["mcpServers"];
+      if (existingServers !== undefined && !isPlainObject(existingServers)) {
+        console.error("⚠ .mcp.json の mcpServers がオブジェクトではありません。");
+        console.error("  手動で修正するか削除してから再実行してください: " + mcpJsonPath);
+        process.exit(1);
+      }
+      mcpJson = parsed;
     }
 
     // 4c. .codex/config.toml も事前に解釈確認 — 解釈できない記法なら書き込みを一切行わない
@@ -142,17 +161,13 @@ program
       process.exit(1);
     }
 
-    // 5. config.json 書き込み — 存在するパスのみを記録する
     const relPaths = existingPaths.map((p) => toProjectRelative(projectRoot, p));
-    try {
-      writeConfig(projectRoot, { tsconfigs: relPaths });
-    } catch (err) {
-      console.error("⚠ config.json の書き込みに失敗しました:", err instanceof Error ? err.message : err);
-      process.exit(1);
-    }
-    console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
 
-    // 6. 初回グラフビルド — 成功後にのみ .mcp.json を書き込む
+    // 5. 初回グラフビルド — 成功後にのみ config.json / .mcp.json を書き込む。
+    // config.json を先に書くと、構築が失敗したときに config.json だけが新しくなり、
+    // それまで健全だったグラフが tsconfig_drift で全ツールから拒否される。
+    // 復旧手段の `build`（引数なし）も毒された config.json を読むので詰む。
+    // `build` と MCP の `build_graph` は既に「構築成功後に書く」順序。
     console.log(`... 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
     let db: ReturnType<typeof openDb> | undefined;
     try {
@@ -178,6 +193,15 @@ program
     } finally {
       db?.close();
     }
+
+    // 6. config.json 書き込み — 存在するパスのみを記録する
+    try {
+      writeConfig(projectRoot, { tsconfigs: relPaths });
+    } catch (err) {
+      console.error("⚠ config.json の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+    console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
 
     // 7. MCP サーバーを .mcp.json に登録 — グラフ構築成功後のみ実行
     const serverEntry = buildMcpServerEntry(projectRoot, dbPath);

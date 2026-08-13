@@ -190,6 +190,44 @@ TS_REVIEW_GRAPH_DB = "/in/container/graph.db"
     expect(withoutEntryOut).not.toContain("使えません");
   });
 
+  it("グラフ構築に失敗しても config.json を毒さない", () => {
+    // config.json を先に書くと、失敗時に既存の健全なグラフが tsconfig_drift で
+    // 全 MCP ツールから拒否され、復旧手段の build も同じ config を読んで詰む。
+    const root = createProject();
+    runInstall(root);
+    const before = readFileSync(path.join(root, ".ts-review-graph/config.json"), "utf-8");
+
+    mkdirSync(path.join(root, "bad"), { recursive: true });
+    writeFileSync(path.join(root, "bad/tsconfig.json"), "this is not json\n");
+
+    const failed = spawnSync(
+      process.execPath,
+      [cliPath, "install", "--tsconfig", "tsconfig.json", "--tsconfig", "bad/tsconfig.json"],
+      { cwd: root, encoding: "utf8" }
+    );
+    expect(failed.status).toBe(1);
+    expect(readFileSync(path.join(root, ".ts-review-graph/config.json"), "utf-8")).toBe(before);
+  });
+
+  it(".mcp.json は構文だけでなく形も検証してから進む", () => {
+    // 形を見ないと、配列などで「登録した」と報告しつつ何も書かない／
+    // 生の TypeError で異常終了する。
+    for (const shape of ["[]", '{"mcpServers": []}', "null", "123"]) {
+      const root = createProject();
+      writeFileSync(path.join(root, ".mcp.json"), `${shape}\n`);
+
+      const result = spawnSync(
+        process.execPath,
+        [cliPath, "install", "--tsconfig", "tsconfig.json"],
+        { cwd: root, encoding: "utf8" }
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(".mcp.json");
+      expect(result.stderr).not.toContain("TypeError");
+      expect(result.stdout).not.toContain("インストール完了");
+    }
+  });
+
   it("解釈できない .codex/config.toml では設定ファイル群を書かずに失敗する", () => {
     const root = createProject();
     mkdirSync(path.join(root, ".codex"), { recursive: true });

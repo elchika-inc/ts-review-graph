@@ -1,5 +1,5 @@
 import { openDb, buildFullGraph, toProjectRelative } from "@elchika-inc/ts-review-graph-core";
-import { withAbiGuidance } from "./db-unavailable.js";
+import { formatBuildOpenFailure } from "./db-unavailable.js";
 import path from "node:path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import type { ToolResult } from "./types.js";
@@ -74,7 +74,7 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
     const message = err instanceof Error ? err.message : String(err);
     return {
       content: [
-        { type: "text", text: withAbiGuidance(`データベースを開けませんでした — ${message}`, message) },
+        { type: "text", text: formatBuildOpenFailure(dbPath, message, existsSync(dbPath)) },
       ],
       isError: true,
     };

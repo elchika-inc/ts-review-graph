@@ -249,7 +249,7 @@ function dispatch(
     case "build_graph":
       return buildGraph(args);
     case "graph_status":
-      return graphStatus(db, dbFailure);
+      return graphStatus(db, dbFailure, getProjectRoot());
     default:
       return {
         content: [{ type: "text", text: `Unknown tool: ${toolName}` }],

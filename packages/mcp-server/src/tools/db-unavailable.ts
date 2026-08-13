@@ -22,6 +22,30 @@ export function withAbiGuidance(text: string, message: string): string {
 }
 
 /**
+ * build_graph 自身の openDb 失敗テキスト。
+ *
+ * build_graph は他ツールが案内する復旧経路なので、ここで行き止まりにしない。
+ * ABI 不一致以外（破損・切り詰め）でも「何をすれば直るか」を必ず書く。
+ */
+export function formatBuildOpenFailure(
+  dbPath: string,
+  message: string,
+  dbExists: boolean
+): string {
+  const lines = [`データベースを開けませんでした: ${dbPath}`, `  理由: ${message}`];
+  const guidance = formatNpxAbiMismatchGuidance(message);
+  if (guidance.length > 0) {
+    lines.push(...guidance.map((line) => `  ${line}`));
+  } else if (dbExists) {
+    // 壊れた DB は作り直せる。案内が無いと、全ツールが build_graph を勧めるのに
+    // build_graph も同じ理由で失敗する閉ループになる。
+    lines.push("  グラフ DB が壊れている可能性があります。次のファイルを削除してから再実行してください:");
+    lines.push(`  rm -f -- ${dbPath} ${dbPath}-wal ${dbPath}-shm`);
+  }
+  return lines.join("\n");
+}
+
+/**
  * オープン失敗を「未構築」と混同させないための説明行。
  * ABI 不一致なら CLI と同じ復旧手順（npx キャッシュ削除）を添える。
  */

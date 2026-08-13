@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { formatNpxAbiMismatchGuidance } from "@elchika-inc/ts-review-graph-core";
 import {
+  formatBuildOpenFailure,
   formatDbOpenFailureLines,
   formatDbUnavailableText,
   withAbiGuidance,
@@ -40,6 +41,24 @@ describe("MCP サーバーの ABI 診断参照", () => {
     expect(withAbiGuidance("データベースを開けませんでした — x", "file is not a database")).toBe(
       "データベースを開けませんでした — x"
     );
+  });
+
+  it("build_graph の DB 失敗はパスと復旧手順を出す（案内が閉ループにならない）", () => {
+    // 全ツールが build_graph を勧めるのに build_graph も同じ理由で失敗するため、
+    // ABI 以外の破損でも「何をすれば直るか」を必ず書く。
+    const corrupted = formatBuildOpenFailure("/repo/.ts-review-graph/graph.db", "file is not a database", true);
+    expect(corrupted).toContain("/repo/.ts-review-graph/graph.db");
+    expect(corrupted).toContain("rm -f --");
+    expect(corrupted).toContain("graph.db-wal");
+
+    // ABI 不一致では従来どおり npx キャッシュ削除を案内する
+    const abi = formatBuildOpenFailure("/repo/.ts-review-graph/graph.db", ABI_ERROR, true);
+    expect(abi).toContain("rm -rf -- '/Users/test/.npm/_npx/08af52269914770e'");
+    expect(abi).not.toContain("rm -f --");
+
+    // DB ファイルが無いなら削除案内は出さない
+    const missing = formatBuildOpenFailure("/repo/.ts-review-graph/graph.db", "boom", false);
+    expect(missing).not.toContain("rm -f --");
   });
 
   it("degraded が案内する復旧経路 build_graph も失敗理由を返す", () => {
