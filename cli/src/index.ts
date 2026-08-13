@@ -198,7 +198,12 @@ program
       console.error("⚠ .codex/config.toml の更新内容が未計算です — install を中止します");
       process.exit(1);
     }
-    if (codexUpdate.changed) {
+    if (codexUpdate.skippedReason !== null) {
+      // 構造は解釈できるが安全に書き換えられないエントリ。install 全体は止めない
+      // ——止めると独自の起動方法を設定している利用者が .mcp.json の更新もできなくなる。
+      console.warn(`⚠ .codex/config.toml の [mcp_servers.ts-review-graph] は更新しませんでした: ${codexUpdate.skippedReason}`);
+      console.warn(`  version の更新が必要なら手動で編集してください: ${codexConfigPath}`);
+    } else if (codexUpdate.changed) {
       try {
         mkdirSync(path.dirname(codexConfigPath), { recursive: true });
         writeFileSync(codexConfigPath, codexUpdate.content);

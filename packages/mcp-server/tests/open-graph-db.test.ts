@@ -29,9 +29,10 @@ describe("openGraphDb", () => {
   });
 });
 
-describe("server.ts が使う状態遷移", () => {
+describe("openGraphDb の状態遷移契約", () => {
   // server.ts は「起動時」と「build_graph 後の再オープン」で openGraphDb を共有する。
-  // ここでは degraded → 復旧 / 未構築 → degraded の2遷移を固定する。
+  // ここで固定するのは純関数の契約で、server.ts の配線そのものは
+  // tests/server-degraded.test.ts が実プロセスで検証する。
   it("degraded で起動しても再オープン成功で理由がクリアされる", () => {
     let attempt = 0;
     const open = () => {

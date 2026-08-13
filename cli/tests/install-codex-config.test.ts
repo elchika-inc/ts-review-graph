@@ -32,11 +32,12 @@ function createProject(): string {
   return root;
 }
 
-function runInstall(root: string): string {
-  return execFileSync(process.execPath, [cliPath, "install", "--tsconfig", "tsconfig.json"], {
-    cwd: root,
-    encoding: "utf8",
-  });
+function runInstall(root: string, extraArgs: string[] = []): string {
+  return execFileSync(
+    process.execPath,
+    [cliPath, "install", "--tsconfig", "tsconfig.json", ...extraArgs],
+    { cwd: root, encoding: "utf8" }
+  );
 }
 
 function readCodexConfig(root: string): string {
@@ -92,6 +93,22 @@ env = { TS_REVIEW_GRAPH_DB = "/old/absolute/path/.ts-review-graph/graph.db" }
     expect(updated).not.toContain("@0.0.1");
     expect(updated).not.toContain("TS_REVIEW_GRAPH_DB");
     expect(updated).not.toContain("/old/absolute/path");
+  });
+
+  it("custom --db では Codex が既定 DB を見る旨を毎回警告する", () => {
+    const root = createProject();
+    const warning = "Codex 側は既定の .ts-review-graph/graph.db を参照します";
+
+    // 「Codex 側だけ別 DB を見る」状態は install を繰り返しても続くので、
+    // 書き換えの有無に関わらず警告が出続ける必要がある。
+    expect(runInstall(root, ["--db", "custom/graph.db"])).toContain(warning);
+    expect(runInstall(root, ["--db", "custom/graph.db"])).toContain(warning);
+    expect(readCodexConfig(root)).not.toContain("env");
+  });
+
+  it("既定 DB では余計な警告を出さない", () => {
+    const root = createProject();
+    expect(runInstall(root)).not.toContain("既定の .ts-review-graph/graph.db を参照します");
   });
 
   it("解釈できない .codex/config.toml では設定ファイル群を書かずに失敗する", () => {

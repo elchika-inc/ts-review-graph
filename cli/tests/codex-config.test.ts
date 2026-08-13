@@ -14,7 +14,7 @@ args = [
 describe("updateCodexConfig — 新規作成", () => {
   it("空ファイルには version 固定・env なしのエントリだけを書く", () => {
     const result = updateCodexConfig("", SPEC);
-    expect(result).toEqual({ content: canonical, changed: true });
+    expect(result).toEqual({ content: canonical, changed: true, skippedReason: null });
     expect(result.content).not.toContain("env");
   });
 
@@ -111,14 +111,76 @@ args = [
     expect(result.content).toContain(`    "--verbose",`);
   });
 
-  it("args に自分の package spec が無ければ書き換えずに throw する", () => {
-    // 既定 args で上書きすると、独自の起動方法を壊した設定へ黙って変えてしまう。
-    // 例: command = "node" のまま `node -y @elchika-inc/...` になり起動不能。
+  it("名前を含むだけの引数を package spec と取り違えない", () => {
+    // 一致判定を緩めると、パスやフラグ値に ts-review-graph を含む引数が
+    // package spec で上書きされて黙って消える。
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1", "--config", "/home/me/ts-review-graph.json", "@elchika-inc/ts-review-graph@0.5.4"]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`"--config", "/home/me/ts-review-graph.json"`);
+    // CLI package (mcp-server ではない) も置換対象にしない
+    expect(result.content).toContain(`"@elchika-inc/ts-review-graph@0.5.4"`);
+    expect(result.content).toContain(`"${SPEC}"`);
+    expect(result.content).not.toContain("@0.0.1");
+  });
+
+  // 「解釈できない構造 → 全体中止(throw)」と「解釈できるが書き換えられないエントリ →
+  // 触らず続行」を分ける。後者を throw にすると、独自の起動方法を設定している利用者は
+  // install を完走できず .mcp.json の更新経路まで恒久的に塞がれる。
+  it("独自の起動方法のエントリは触らず、理由を返して続行する", () => {
     const custom = `[mcp_servers.ts-review-graph]
 command = "node"
 args = ["./dist/server.js", "--log-level", "debug"]
 `;
-    expect(() => updateCodexConfig(custom, SPEC)).toThrow(CodexConfigParseError);
+    const result = updateCodexConfig(custom, SPEC);
+
+    expect(result.changed).toBe(false);
+    expect(result.content).toBe(custom);
+    expect(result.skippedReason).toContain(`args に ${"@elchika-inc/ts-review-graph-mcp-server"}`);
+  });
+
+  it("独自 command で args が無いエントリにも既定 args を注入しない", () => {
+    // 注入すると `ts-review-graph-mcp -y @elchika-inc/...` という起動不能な指定になる
+    const custom = `[mcp_servers.ts-review-graph]\ncommand = "ts-review-graph-mcp"\n`;
+    const result = updateCodexConfig(custom, SPEC);
+
+    expect(result.changed).toBe(false);
+    expect(result.content).toBe(custom);
+    expect(result.skippedReason).toContain("args が無く command が独自の値");
+  });
+
+  it("command = npx で args が無ければ既定 args を補う", () => {
+    const current = `[mcp_servers.ts-review-graph]\ncommand = "npx"\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.skippedReason).toBeNull();
+    expect(result.content).toContain(`    "${SPEC}",`);
+    // 補完は既存キーの後ろへ入れる（args が command より前に来ない）
+    expect(result.content.indexOf(`command = "npx"`)).toBeLessThan(result.content.indexOf("args = ["));
+  });
+
+  it("command / args のドット記法は触らず理由を返す", () => {
+    for (const key of ["command", "args"]) {
+      const current = `[mcp_servers.ts-review-graph]\n${key}.foo = 1\n`;
+      const result = updateCodexConfig(current, SPEC);
+      expect(result.content).toBe(current);
+      expect(result.skippedReason).toContain("ドット記法");
+    }
+  });
+
+  it("スキップしたエントリの env は除去しない", () => {
+    const custom = `[mcp_servers.ts-review-graph]
+command = "docker"
+args = ["run", "--rm", "-i", "ts-review-graph:latest"]
+env = { TS_REVIEW_GRAPH_DB = "/in/container/graph.db" }
+`;
+    const result = updateCodexConfig(custom, SPEC);
+
+    expect(result.content).toBe(custom);
+    expect(result.content).toContain("TS_REVIEW_GRAPH_DB");
   });
 });
 
@@ -174,6 +236,38 @@ env = { TS_REVIEW_GRAPH_DB = "/old/graph.db", NODE_OPTIONS = "--max-old-space-si
 
     expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
     expect(result.content).toContain(`env = { NODE_OPTIONS = "--max-old-space-size=4096" }`);
+  });
+
+  it("前方一致の似たキーを巻き込まない（除去は厳密一致のみ）", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "${SPEC}"]
+env = { TS_REVIEW_GRAPH_DB = "/x", TS_REVIEW_GRAPH_LOG = "debug" }
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`TS_REVIEW_GRAPH_LOG = "debug"`);
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+  });
+
+  it("env 以外のサブテーブルは刈らない", () => {
+    // キーを持つ extra と、コメントだけの placeholder の両方を見る。
+    // 後者は「見出しごと落とす」判定に掛かるため、env 限定ガードが無いと消える。
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "${SPEC}"]
+
+[mcp_servers.ts-review-graph.extra]
+retries = 3
+
+[mcp_servers.ts-review-graph.placeholder]
+# あとで書く
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain("[mcp_servers.ts-review-graph.extra]");
+    expect(result.content).toContain("retries = 3");
+    expect(result.content).toContain("[mcp_servers.ts-review-graph.placeholder]");
   });
 
   it("env の行末コメントとインデントを保つ", () => {
@@ -354,7 +448,8 @@ command = "alpha-bin"
 
     // 文字列の中の見出しは既存エントリとして扱わないので、末尾に本物が追記される
     expect(result.content).toContain(`note = """`);
-    expect(result.content.trimEnd().endsWith(`]`)).toBe(true);
+    // 文字列内の1つ + 末尾に追記された本物の1つ = 2 出現
+    expect(result.content.split("[mcp_servers.ts-review-graph]").length - 1).toBe(2);
     expect(result.content).toContain(`"${SPEC}"`);
   });
 
@@ -366,6 +461,17 @@ args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
     const result = updateCodexConfig(current, SPEC);
 
     expect(result.content.split("mcp_servers.").length - 1).toBe(1);
+    expect(result.content).toContain(`"${SPEC}"`);
+  });
+
+  it("リテラル文字列の見出しも既存エントリとして認識する", () => {
+    const current = `[mcp_servers.'ts-review-graph']
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content.split("[mcp_servers.").length - 1).toBe(1);
     expect(result.content).toContain(`"${SPEC}"`);
   });
 

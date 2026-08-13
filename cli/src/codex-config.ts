@@ -15,6 +15,16 @@ export class CodexConfigParseError extends Error {
 export interface CodexConfigUpdate {
   content: string;
   changed: boolean;
+  /**
+   * 既存エントリを安全に更新できず、触れずに残した理由。
+   *
+   * 中止の粒度は2段に分ける:
+   * - **構造が解釈できない** → `CodexConfigParseError`。何も書かない（fail-closed）
+   * - **解釈できるが書き換えられないエントリ** → ここに理由を入れて続行。
+   *   独自の起動方法（docker / node ラッパー等）を設定している利用者の install を
+   *   恒久的に塞がないため、エントリだけを見送る。
+   */
+  skippedReason: string | null;
 }
 
 const SERVER_TABLE_PATH = ["mcp_servers", "ts-review-graph"] as const;
@@ -531,14 +541,26 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
     if (remainingKeys === 0) dropped.add(index);
   }
 
+  // 既存エントリを安全に更新できないなら、そのエントリは丸ごと元のまま残す。
+  // env の除去も行わない——独自の起動方法では env が意味を持ちうる。
+  const sectionBodyEnd = sectionIndex === -1 ? -1 : nextHeaderIndex(items, sectionIndex);
+  const skippedReason =
+    sectionIndex === -1
+      ? null
+      : findSkipReason(items, lines, sectionIndex + 1, sectionBodyEnd, packageSpec);
+
   const output: string[] = [];
   for (const [index, item] of items.entries()) {
-    if (dropped.has(index)) continue;
+    if (skippedReason === null && dropped.has(index)) continue;
 
     if (index === sectionIndex) {
       output.push(...lines.slice(item.start, item.end + 1));
-      const bodyEnd = nextHeaderIndex(items, index);
-      output.push(...rewriteSectionBody(items, lines, index + 1, bodyEnd, dropped, packageSpec));
+      if (skippedReason !== null) continue; // 本体は以降の通常経路でそのまま出力する
+      output.push(...rewriteSectionBody(items, lines, index + 1, sectionBodyEnd, dropped, packageSpec));
+      continue;
+    }
+    if (skippedReason !== null) {
+      output.push(...lines.slice(item.start, item.end + 1));
       continue;
     }
     if (sectionIndex !== -1 && index > sectionIndex && index < nextHeaderIndex(items, sectionIndex)) {
@@ -556,7 +578,7 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
   while (output.at(-1) === "") output.pop();
   const body = output.length > 0 ? `${output.join(eol)}${eol}` : "";
   const content = `${bom}${body}`;
-  return { content, changed: content !== current };
+  return { content, changed: content !== current, skippedReason };
 }
 
 function nextHeaderIndex(items: Item[], from: number): number {
@@ -564,6 +586,73 @@ function nextHeaderIndex(items: Item[], from: number): number {
     if (items[i]!.kind === "header") return i;
   }
   return items.length;
+}
+
+/** `command = "npx"` の値を取り出す。文字列以外・解釈不能なら null。 */
+function readCommandValue(raw: string): string | null {
+  const keyPath = readKeyPath(raw, 0);
+  if (!keyPath) return null;
+  let cursor = skipWs(raw, keyPath.next);
+  if (raw[cursor] !== "=") return null;
+  cursor = skipWs(raw, cursor + 1);
+  const quote = raw[cursor];
+  if (quote !== '"' && quote !== "'") return null;
+  const close = skipAtomic(raw, cursor);
+  if (close === null) return null;
+  return raw.slice(cursor + 1, close - 1);
+}
+
+/**
+ * 既存エントリを安全に更新できない理由を返す（無ければ null）。
+ *
+ * ここで返るのは「解釈はできるが、どう書き換えるべきか推測できない」ケースだけ。
+ * 呼び出し側はエントリを触らずに警告する——独自の起動方法を設定している利用者の
+ * install を恒久的に塞がないため、全体中止（throw）とは区別する。
+ */
+function findSkipReason(
+  items: Item[],
+  lines: string[],
+  start: number,
+  end: number,
+  packageSpec: string
+): string | null {
+  let commandValue: string | null = null;
+  let hasCommand = false;
+  let argsItem: Item | null = null;
+
+  for (let index = start; index < end; index++) {
+    const item = items[index]!;
+    if (item.kind !== "key") continue;
+    const [head, ...rest] = item.parts;
+    if (head !== "command" && head !== "args") continue;
+
+    // `command.foo` / `args.foo` は command/args をテーブルとして扱う記法。
+    // 補完した `command = "npx"` / `args = [...]` と衝突して invalid TOML を生む。
+    if (rest.length > 0) {
+      return `${head} がドット記法（${item.parts.join(".")}）で定義されています`;
+    }
+    if (head === "command") {
+      hasCommand = true;
+      commandValue = readCommandValue(lines.slice(item.start, item.end + 1).join("\n"));
+    } else {
+      argsItem = item;
+    }
+  }
+
+  if (argsItem) {
+    const raw = lines.slice(argsItem.start, argsItem.end + 1).join("\n");
+    if (replacePackageSpecInArgs(raw, packageSpec) === null) {
+      return `args に ${MCP_PACKAGE_NAME} の指定がありません`;
+    }
+    return null;
+  }
+
+  // args 不在で command が独自値なら、既定 args を補うと
+  // `<独自 command> -y @elchika-inc/...` という起動不能な組み合わせになる。
+  if (hasCommand && commandValue !== "npx") {
+    return `args が無く command が独自の値（${commandValue ?? "解釈不能"}）です`;
+  }
+  return null;
 }
 
 function rewriteSectionBody(
@@ -577,6 +666,7 @@ function rewriteSectionBody(
   const body: string[] = [];
   let sawCommand = false;
   let sawArgs = false;
+  let lastContentIndex = -1;
 
   for (let index = start; index < end; index++) {
     if (dropped.has(index)) continue;
@@ -591,6 +681,7 @@ function rewriteSectionBody(
         sawCommand = true;
         // 利用者が変えた command は保持する（更新するのは args の version だけ）
         body.push(...lines.slice(item.start, item.end + 1));
+        lastContentIndex = body.length;
         continue;
       }
       if (head === "args" && rest.length === 0) {
@@ -599,17 +690,9 @@ function rewriteSectionBody(
         }
         sawArgs = true;
         const raw = lines.slice(item.start, item.end + 1).join("\n");
-        const replaced = replacePackageSpecInArgs(raw, packageSpec);
-        if (replaced === null) {
-          // 既定の args で上書きすると、独自の起動方法（例: command = "node" と
-          // args = ["./dist/server.js"]）を `node -y @elchika-inc/...` という
-          // 起動不能なエントリへ黙って変えてしまう。どう起動したいのかは推測できない。
-          throw new CodexConfigParseError(
-            `[mcp_servers.ts-review-graph] の args に ${MCP_PACKAGE_NAME} の指定が見つかりません。` +
-              "独自の起動方法を設定している場合は手動で version を更新してください"
-          );
-        }
-        body.push(...replaced.split("\n"));
+        // findSkipReason が先に走っているので、ここへ来る時点で必ず置換できる
+        body.push(...replacePackageSpecInArgs(raw, packageSpec)!.split("\n"));
+        lastContentIndex = body.length;
         continue;
       }
       if (head === "env") {
@@ -617,24 +700,29 @@ function rewriteSectionBody(
         if (rest.length > 0) {
           if (rest.length === 1 && rest[0] === STALE_ENV_KEY) continue; // env.TS_REVIEW_GRAPH_DB
           body.push(...lines.slice(item.start, item.end + 1));
+          lastContentIndex = body.length;
           continue;
         }
         const rewritten = removeStaleEnvKey(lines.slice(item.start, item.end + 1).join("\n"));
         if (rewritten === null) continue; // env が空になった
-        if (rewritten === undefined) {
-          body.push(...lines.slice(item.start, item.end + 1));
-          continue;
-        }
-        body.push(rewritten);
+        body.push(
+          ...(rewritten === undefined ? lines.slice(item.start, item.end + 1) : [rewritten])
+        );
+        lastContentIndex = body.length;
         continue;
       }
     }
 
     body.push(...lines.slice(item.start, item.end + 1));
+    if (item.kind === "key") lastContentIndex = body.length;
   }
 
   const missing: string[] = [];
   if (!sawCommand) missing.push(`command = "npx"`);
   if (!sawArgs) missing.push(...buildArgsLines(packageSpec));
-  return [...missing, ...body];
+  if (missing.length === 0) return body;
+
+  // 既存キーの直後へ差し込む。先頭へ入れると args が command より前に来て不自然になる。
+  const insertAt = lastContentIndex === -1 ? 0 : lastContentIndex;
+  return [...body.slice(0, insertAt), ...missing, ...body.slice(insertAt)];
 }
