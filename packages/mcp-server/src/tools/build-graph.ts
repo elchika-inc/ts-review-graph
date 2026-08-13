@@ -1,4 +1,5 @@
 import { openDb, buildFullGraph, toProjectRelative } from "@elchika-inc/ts-review-graph-core";
+import { formatBuildOpenFailure } from "./db-unavailable.js";
 import path from "node:path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import type { ToolResult } from "./types.js";
@@ -68,12 +69,12 @@ export function buildGraph(args: Record<string, unknown>): ToolResult {
   try {
     db = openDb(dbPath);
   } catch (err) {
+    // build_graph は degraded mode が案内する復旧経路そのもの。
+    // ここに診断が無いと、ABI 不一致の利用者は復旧手順に辿り着けないまま行き止まりになる。
+    const message = err instanceof Error ? err.message : String(err);
     return {
       content: [
-        {
-          type: "text",
-          text: `データベースを開けませんでした — ${err instanceof Error ? err.message : String(err)}`,
-        },
+        { type: "text", text: formatBuildOpenFailure(dbPath, message, existsSync(dbPath)) },
       ],
       isError: true,
     };

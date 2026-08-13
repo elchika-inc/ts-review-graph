@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-08-14
+
+### Added
+- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` 内の version 指定だけを差し替える（独自に足した引数・`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。`args` に ts-review-graph の package 指定が無い・`args` が無く `command` が `npx` 以外・`command`/`args` がドット記法やサブテーブル・`mcp_servers` やエントリがインラインテーブル記法、のいずれかに当てはまる場合は推測で書き換えず、そのエントリだけ更新せずに警告して `install` は続行する（そのエントリの `env` にも触れない）。スキップされ、かつ `[mcp_servers.ts-review-graph]` 見出しがファイルに無い場合（`mcp_servers` やエントリ自体がインラインテーブル・ドット記法、`command`/`args` の子テーブルだけがある場合）は、エントリの新規追加も行わない。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
+- 既存の `.codex/config.toml` をそもそも正しく読めない場合（値や文字列が閉じていない、重複定義等）は、`install` が `config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` をいずれも書かずに中止する（fail-closed。既存手順どおり `.gitignore` と `.ts-review-graph/ignore` は中止前に作成され得る）
+- `uninstall` が `.codex/config.toml` の手動削除を案内するようにした
+- README に Codex での利用方法と既知の制限（trust 済み project でのみ project 単位設定が読まれる・Claude Code plugin の hooks は Codex では読み込まれない）を追記した
+
+### Fixed
+- MCP サーバーが DB のオープンに失敗したとき、全ツールが「グラフ未構築 — build_graph を呼び出してください」を返して原因を隠していた問題を、オープン失敗と未構築を区別し、`build_graph` 自身の DB オープン失敗を含むすべての経路で失敗理由と（Node ABI 不一致なら）npx キャッシュ削除の復旧手順を返すよう修正した
+
+- `install` がグラフ構築の前に `.ts-review-graph/config.json` を書いていた問題を、構築成功後に書くよう修正した。構築が失敗すると config.json だけが新しくなり、それまで健全だったグラフが `tsconfig_drift` で全 MCP ツールから拒否され、復旧手段として案内される `build`（引数なし）も同じ config.json を読むため手で編集するまで復旧できなかった
+- MCP `graph_status` が検疫の判定を表示せず、他ツールが `MISMATCH` で全滅していても「正常」に見えていた問題を、`health:` 行の追加により修正した（検疫免除＝拒否しないことは維持する）
+- MCP `build_graph` の DB オープン失敗が、Node ABI 不一致以外（破損・切り詰め）では案内を1行も返さず DB パスすら出していなかった問題を、DB パスと削除手順を返すよう修正した。全ツールが復旧手段として `build_graph` を案内するため、ここで行き止まりになると閉ループだった
+- `install` の `.mcp.json` 事前検証が構文だけだった問題を、トップレベルと `mcpServers` がプレーンオブジェクトであることを書き込み前に確認するよう修正した（`[]` では「登録しました」と報告しつつ何も書かず、`null` などでは異常終了していた）
+
+### Changed
+- Node ABI 不一致の診断を `packages/core` へ移し、CLI と MCP サーバーが同一の実装を参照するようにした（CLI の出力は変更なし）
+
 ## [0.5.4] - 2026-08-13
 
 ### Added

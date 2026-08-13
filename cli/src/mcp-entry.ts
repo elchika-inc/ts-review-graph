@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 const packagePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
 const cliVersion = (JSON.parse(readFileSync(packagePath, "utf-8")) as { version: string }).version;
 
+// .mcp.json (Claude Code) と .codex/config.toml (Codex) で同じ spec を使う。
+// version 読み取りの経路を1本に保ち、片方だけ古い version を書く事故を防ぐ。
+export const mcpServerPackageSpec = `@elchika-inc/ts-review-graph-mcp-server@${cliVersion}`;
+
 export interface McpServerEntry {
   command: string;
   args: string[];
@@ -19,7 +23,7 @@ export interface McpServerEntry {
 export function buildMcpServerEntry(projectRoot: string, dbPath: string): McpServerEntry {
   const entry: McpServerEntry = {
     command: "npx",
-    args: ["-y", `@elchika-inc/ts-review-graph-mcp-server@${cliVersion}`],
+    args: ["-y", mcpServerPackageSpec],
   };
   const defaultDb = path.join(projectRoot, ".ts-review-graph/graph.db");
   if (path.resolve(dbPath) !== path.resolve(defaultDb)) {

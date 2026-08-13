@@ -35,6 +35,7 @@ pnpm monorepo。4 パッケージで構成:
 - `packages/core/src/updater.ts` — 増分更新ロジック
 - `packages/mcp-server/src/tools/index.ts` — 全 MCP ツール定義と登録
 - `cli/src/index.ts` — CLI エントリポイント (install/build/update/status/uninstall)
+- `cli/src/codex-config.ts` — Codex 用 `.codex/config.toml` の追記。中止の粒度は2段（判定軸は「ファイルを正しく読めたか」）— 詳細は `CodexConfigUpdate` の doc コメント
 
 ## Database Schema
 
@@ -55,6 +56,20 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 **重要**: `meta` テーブルはグラフの構築条件（`schema_version` / `tsconfigs` /
 `built_at` / `built_root`）を記録する。`checkGraphHealth()` がこれを使って検疫する。
 `meta` 不在の DB は旧形式として fail-closed で拒否される。
+
+## Diagnostics
+
+**重要**: Node ABI 不一致の診断は `packages/core/src/diagnostics.ts` が正本で、CLI と
+MCP サーバーの**すべての DB オープン経路が同じ実装を参照する**。片側にだけ診断があると、
+同じ ABI 不一致が経路によって「原因不明のグラフ未構築」に見える（実障害あり）。
+実装を複製せず core に置くこと。
+
+**重要**: MCP サーバーは DB を開けなかったときに「未構築」と言わない。db=null でも動作する
+ツールを追加するときは、ABI 診断を届ける責任も同時に負う——忘れると、そのツールだけが
+ABI 不一致を「未構築」や原因不明のエラーとして誤報する。出し分けと届け方は
+`packages/mcp-server/src/tools/db-unavailable.ts` が正本で、挙動は
+`packages/mcp-server/tests/db-unavailable.test.ts` と
+`packages/mcp-server/tests/server-degraded.test.ts` が固定している。
 
 ## Gotchas
 

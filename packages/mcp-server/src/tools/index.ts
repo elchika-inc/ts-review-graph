@@ -8,7 +8,10 @@ import { queryGraph } from "./query-graph.js";
 import { buildGraph } from "./build-graph.js";
 import { graphStatus } from "./graph-status.js";
 import { findCycles } from "./find-cycles.js";
+import { formatDbUnavailableText, type DbOpenFailure } from "./db-unavailable.js";
 import type { ToolResult } from "./types.js";
+
+export type { DbOpenFailure } from "./db-unavailable.js";
 
 function getProjectRoot(): string {
   return process.cwd();
@@ -172,17 +175,13 @@ export const TOOL_DEFINITIONS = [
 export function registerTools(
   db: Db | null,
   toolName: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  dbFailure: DbOpenFailure | null = null
 ): ToolResult {
-  // graph_status と build_graph は db=null でも動作する
+  // graph_status と build_graph は db=null でも動作する（build_graph は復旧手段そのもの）
   if (!db && toolName !== "build_graph" && toolName !== "graph_status") {
     return {
-      content: [
-        {
-          type: "text",
-          text: "Graph not built. Call build_graph first. / グラフが未構築です。まず build_graph ツールを呼び出してください。",
-        },
-      ],
+      content: [{ type: "text", text: formatDbUnavailableText(dbFailure) }],
       isError: true,
     };
   }
@@ -220,7 +219,7 @@ export function registerTools(
     }
   }
 
-  const result = dispatch(db, toolName, args);
+  const result = dispatch(db, toolName, args, dbFailure);
 
   if (staleNotice && result.isError !== true && result.content[0]?.type === "text") {
     result.content[0].text = `${staleNotice}\n\n${result.content[0].text}`;
@@ -231,7 +230,8 @@ export function registerTools(
 function dispatch(
   db: Db | null,
   toolName: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  dbFailure: DbOpenFailure | null
 ): ToolResult {
   switch (toolName) {
     case "get_minimal_context":
@@ -249,7 +249,7 @@ function dispatch(
     case "build_graph":
       return buildGraph(args);
     case "graph_status":
-      return graphStatus(db);
+      return graphStatus(db, dbFailure, getProjectRoot());
     default:
       return {
         content: [{ type: "text", text: `Unknown tool: ${toolName}` }],

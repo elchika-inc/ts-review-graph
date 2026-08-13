@@ -10,11 +10,12 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildMcpServerEntry } from "./mcp-entry.js";
+import { buildMcpServerEntry, mcpServerPackageSpec } from "./mcp-entry.js";
 import {
   formatNpxAbiMismatchGuidance,
   updateGraphGitignore,
 } from "./install-support.js";
+import { updateCodexConfig, CodexConfigParseError } from "./codex-config.js";
 
 const _pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
 const _version = (JSON.parse(readFileSync(_pkgPath, "utf-8")) as { version: string }).version;
@@ -25,6 +26,10 @@ function reportDatabaseOpenFailure(prefix: string, err: unknown): void {
   for (const line of formatNpxAbiMismatchGuidance(message)) {
     console.error(`  ${line}`);
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const CONFIG_FILE_NAME = ".ts-review-graph/config.json";
@@ -114,26 +119,55 @@ program
     const mcpJsonPath = path.join(projectRoot, ".mcp.json");
     let mcpJson: Record<string, unknown> = {};
     if (existsSync(mcpJsonPath)) {
+      let parsed: unknown;
       try {
-        mcpJson = JSON.parse(readFileSync(mcpJsonPath, "utf-8")) as Record<string, unknown>;
+        parsed = JSON.parse(readFileSync(mcpJsonPath, "utf-8"));
       } catch {
         console.error("⚠ .mcp.json のパースに失敗しました。既存の設定が破損しています。");
         console.error("  手動で修正するか削除してから再実行してください: " + mcpJsonPath);
         process.exit(1);
       }
+      // 構文だけでなく形も見る。配列や非オブジェクトのまま進むと、登録したつもりで
+      // 何も書かれない（成功と報告する）か、生の TypeError で異常終了する。
+      if (!isPlainObject(parsed)) {
+        console.error("⚠ .mcp.json のトップレベルがオブジェクトではありません。");
+        console.error("  手動で修正するか削除してから再実行してください: " + mcpJsonPath);
+        process.exit(1);
+      }
+      const existingServers = parsed["mcpServers"];
+      if (existingServers !== undefined && !isPlainObject(existingServers)) {
+        console.error("⚠ .mcp.json の mcpServers がオブジェクトではありません。");
+        console.error("  手動で修正するか削除してから再実行してください: " + mcpJsonPath);
+        process.exit(1);
+      }
+      mcpJson = parsed;
     }
 
-    // 5. config.json 書き込み — 存在するパスのみを記録する
-    const relPaths = existingPaths.map((p) => toProjectRelative(projectRoot, p));
+    // 4c. .codex/config.toml も事前に解釈確認 — 解釈できない記法なら書き込みを一切行わない
+    const codexConfigPath = path.join(projectRoot, ".codex/config.toml");
+    let codexUpdate: ReturnType<typeof updateCodexConfig> | null = null;
     try {
-      writeConfig(projectRoot, { tsconfigs: relPaths });
+      const currentCodex = existsSync(codexConfigPath)
+        ? readFileSync(codexConfigPath, "utf-8")
+        : "";
+      codexUpdate = updateCodexConfig(currentCodex, mcpServerPackageSpec);
     } catch (err) {
-      console.error("⚠ config.json の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+      if (err instanceof CodexConfigParseError) {
+        console.error("⚠ .codex/config.toml を安全に更新できません: " + err.message);
+        console.error("  手動で mcp_servers.ts-review-graph を整理してから再実行してください: " + codexConfigPath);
+      } else {
+        console.error("⚠ .codex/config.toml の読み込みに失敗しました:", err instanceof Error ? err.message : err);
+      }
       process.exit(1);
     }
-    console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
 
-    // 6. 初回グラフビルド — 成功後にのみ .mcp.json を書き込む
+    const relPaths = existingPaths.map((p) => toProjectRelative(projectRoot, p));
+
+    // 5. 初回グラフビルド — 成功後にのみ config.json / .mcp.json を書き込む。
+    // config.json を先に書くと、構築が失敗したときに config.json だけが新しくなり、
+    // それまで健全だったグラフが tsconfig_drift で全ツールから拒否される。
+    // 復旧手段の `build`（引数なし）も毒された config.json を読むので詰む。
+    // `build` と MCP の `build_graph` は既に「構築成功後に書く」順序。
     console.log(`... 初回グラフをビルド中... (${existingPaths.length} tsconfig)`);
     let db: ReturnType<typeof openDb> | undefined;
     try {
@@ -160,6 +194,15 @@ program
       db?.close();
     }
 
+    // 6. config.json 書き込み — 存在するパスのみを記録する
+    try {
+      writeConfig(projectRoot, { tsconfigs: relPaths });
+    } catch (err) {
+      console.error("⚠ config.json の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+    console.log(`✓ config.json に tsconfigs を保存しました: ${relPaths.join(", ")}`);
+
     // 7. MCP サーバーを .mcp.json に登録 — グラフ構築成功後のみ実行
     const serverEntry = buildMcpServerEntry(projectRoot, dbPath);
     const mcpServers = (mcpJson["mcpServers"] ?? {}) as Record<string, unknown>;
@@ -173,6 +216,47 @@ program
       process.exit(1);
     }
     console.log("✓ MCP サーバーを .mcp.json に登録しました");
+
+    // 7b. Codex 用の project 設定にも登録する（.mcp.json は Codex からは読まれない）
+    if (codexUpdate === null) {
+      console.error("⚠ .codex/config.toml の更新内容が未計算です — install を中止します");
+      process.exit(1);
+    }
+    if (codexUpdate.skippedReason !== null) {
+      // 構造は解釈できるが安全に書き換えられないエントリ。install 全体は止めない
+      // ——止めると独自の起動方法を設定している利用者が .mcp.json の更新もできなくなる。
+      console.warn(`⚠ .codex/config.toml の ts-review-graph は登録・更新しませんでした: ${codexUpdate.skippedReason}`);
+      if (codexUpdate.entryNotAdded) {
+        // エントリを追加できていないので「既存の version を直せばよい」では抜けられない。
+        // 既存エントリの有無は判定できないため、断定はしない。
+        console.warn("  ts-review-graph のエントリを追加できていません（既にあるかどうかは自動判定できません）。");
+        console.warn(`  表示された理由を解消して install を再実行するか、[mcp_servers.ts-review-graph] を手動で設定してください: ${codexConfigPath}`);
+      } else {
+        console.warn(`  version の更新が必要なら手動で編集してください: ${codexConfigPath}`);
+      }
+    } else if (codexUpdate.changed) {
+      try {
+        mkdirSync(path.dirname(codexConfigPath), { recursive: true });
+        writeFileSync(codexConfigPath, codexUpdate.content);
+        console.log("✓ MCP サーバーを .codex/config.toml に登録しました (Codex 用)");
+      } catch (err) {
+        console.error("⚠ .codex/config.toml の書き込みに失敗しました:", err instanceof Error ? err.message : err);
+        console.error("  手動で mcp_servers.ts-review-graph を登録してください: " + codexConfigPath);
+        process.exit(1);
+      }
+    } else {
+      console.log("✓ .codex/config.toml は既に最新です (Codex 用)");
+    }
+    if (
+      codexUpdate.skippedReason === null &&
+      path.resolve(dbPath) !== path.join(graphDir, "graph.db")
+    ) {
+      // env を書かない方針なので Codex は既定 DB を見る。黙って別 DB を参照させると
+      // 今回 MCP 側で潰した「原因が見えないグラフ未構築」が Codex 側で再発する。
+      // 書き換えの有無に関わらず出すが、スキップ時はエントリに触れていない
+      // （既存の env がそのまま効く）ので、この警告は事実に反するため出さない。
+      console.log("  ⚠ Codex 用エントリは env を持たないため、Codex 側は既定の .ts-review-graph/graph.db を参照します");
+    }
 
     // 8. CLAUDE.md に使用方法セクションを追記（べき等）
     const claudeMdPath = path.join(projectRoot, "CLAUDE.md");
@@ -436,6 +520,12 @@ program
           process.exit(1);
         }
       }
+    }
+
+    const codexPath = path.join(projectRoot, ".codex/config.toml");
+    if (existsSync(codexPath)) {
+      console.log(".codex/config.toml の [mcp_servers.ts-review-graph] も手動で削除してください");
+      console.log(`  ${codexPath}`);
     }
 
     console.log("グラフデータ (.ts-review-graph/) は手動で削除してください");

@@ -1,3 +1,7 @@
+// ABI 診断の実装は core が正本 — MCP サーバーの degraded mode でも同じ文言を使う。
+// CLI からの参照経路を保つため、ここで再エクスポートする。
+export { formatNpxAbiMismatchGuidance } from "@elchika-inc/ts-review-graph-core";
+
 export interface GitignoreUpdate {
   content: string;
   changed: boolean;
@@ -42,37 +46,3 @@ export function updateGraphGitignore(content: string): GitignoreUpdate {
   };
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
-
-function extractNpxCacheDirectory(message: string): string | null {
-  const singleQuoted = message.match(
-    /'(\/[^'\r\n]*\/_npx\/[A-Za-z0-9_-]+)(?:\/[^'\r\n]*)?'/
-  );
-  const doubleQuoted = message.match(
-    /"(\/[^"\r\n]*\/_npx\/[A-Za-z0-9_-]+)(?:\/[^"\r\n]*)?"/
-  );
-  const unquoted = message.match(
-    /(?:^|[ \t])(\/[^\s\r\n]*\/_npx\/[A-Za-z0-9_-]+)(?:\/[^\s\r\n]*)?/
-  );
-  return singleQuoted?.[1] ?? doubleQuoted?.[1] ?? unquoted?.[1] ?? null;
-}
-
-export function formatNpxAbiMismatchGuidance(message: string): string[] {
-  if (!message.includes("NODE_MODULE_VERSION")) return [];
-
-  const cacheDirectory = extractNpxCacheDirectory(message);
-  if (!cacheDirectory) {
-    return [
-      "ネイティブモジュールの Node ABI が一致していません。",
-      "該当する npx キャッシュを削除してから、同じコマンドを再実行してください。",
-    ];
-  }
-
-  return [
-    "ネイティブモジュールの Node ABI が一致していません。",
-    "次の npx キャッシュを削除してから、同じコマンドを再実行してください:",
-    `rm -rf -- ${shellQuote(cacheDirectory)}`,
-  ];
-}

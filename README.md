@@ -40,7 +40,7 @@ Graph size: 1,191 nodes / 1,400+ edges (Cloudflare Workers monorepo)
 npx @elchika-inc/ts-review-graph@latest install --tsconfig tsconfig.json
 ```
 
-Config is saved to `.ts-review-graph/config.json`, MCP server is registered in `.mcp.json`, and usage instructions are appended to `CLAUDE.md`. Restart Claude Code and the MCP server connects automatically.
+Config is saved to `.ts-review-graph/config.json`, MCP server is registered in `.mcp.json` (Claude Code) and `.codex/config.toml` (Codex), and usage instructions are appended to `CLAUDE.md`. Restart Claude Code and the MCP server connects automatically.
 
 生成される `.mcp.json` は、MCP server を `install` に使用した CLI と同じ version に固定します。これにより、セッション起動時に古い graph reader や未確認の将来の `latest` release が選ばれることを防ぎます。トレードオフとして修正版は自動受信されないため、ts-review-graph の更新時は更新後の CLI version で、初回と同じ `--tsconfig` / `--db` option を指定して `install` を再実行してください。
 
@@ -67,6 +67,46 @@ claude plugin install ts-review-graph
 plugin 自体はグラフを構築しません。plugin 導入前または導入後に、対象 project で CLI の `install` を別途実行してください。既に `config.json` がある場合は `build` でも再構築できますが、plugin は既定の `.ts-review-graph/graph.db` だけを参照するため、custom `--db` は使わないでください。
 
 plugin を更新するには `claude plugin update ts-review-graph` を実行し、Claude Code を再起動します。CLI も更新する場合は、更新後の CLI version で初回と同じ option を指定して `install` を再実行してください。
+
+### Codex
+
+`install` は Claude Code 用の `.mcp.json` に加えて、Codex の project 単位設定 `.codex/config.toml` にも同じ MCP server を登録します。書き込まれる内容は次の形で、version は `install` に使用した CLI と同じものに固定されます。
+
+```toml
+[mcp_servers.ts-review-graph]
+command = "npx"
+args = [
+    "-y",
+    "@elchika-inc/ts-review-graph-mcp-server@<install に使用した CLI と同じ version>",
+]
+```
+
+既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させません。**`args` がある場合**、更新できるかは `args` に `@elchika-inc/ts-review-graph-mcp-server` の指定があるかで決まります。指定があれば `command` の値（`docker` 等）に関わらず、その version 指定だけを差し替えます（version が付いていなければ付与します）。**`args` が無い場合**は、`command` が `npx` か未指定のときにかぎり既定の `args` を書き足します。`--log-level debug` のように独自に足した引数はそのまま残り、`command` を独自の値へ変えている場合もそれを保持します（`command` が無いときだけ `"npx"` を補います）。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります（`env` が複数行のインラインテーブルの場合は、1行へ畳むとファイルが壊れるため触りません）。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
+
+次のいずれかに当てはまるエントリは、どう起動したいのかを推測できないため**そのエントリだけ更新せず警告します**（`env` も含めて一切変更しません）。`install` 自体は続行し、`.mcp.json` などは通常どおり更新されるので、version の更新が必要なら `.codex/config.toml` を手動で編集してください。
+
+- `args` に `@elchika-inc/ts-review-graph-mcp-server` の指定が無い
+- `args` が無く `command` が `npx` 以外（`command = "docker"` など）
+- `command` または `args` をドット記法（`command.foo = ...`）やサブテーブル（`[mcp_servers.ts-review-graph.command]`、その配下も含む）で書いている
+- `mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法（`ts-review-graph = { ... }` など）で定義している
+
+スキップされた場合、**`[mcp_servers.ts-review-graph]` というテーブル見出しがファイルに無いときは、エントリの新規追加も行いません**（末尾に見出しを足すと TOML 仕様違反になる、あるいはどこへ足すべきか決められないため）。上の条件のうち、見出しが無い形で起きるのは次の3つです。
+
+1. `mcp_servers = { ... }` のように `mcp_servers` 自体をインラインテーブルで定義している場合。`install` はインラインテーブルの中身までは解釈しないので、`ts-review-graph` エントリが既にあるかどうかも判定できません（エントリが無ければ Codex から使えず、既にあっても version は自動更新されません）。→ `mcp_servers` をテーブル見出し記法（`[mcp_servers]`）へ書き直してください。
+2. `[mcp_servers]` の下に `ts-review-graph = { ... }` と書く、または `mcp_servers.ts-review-graph.command = "npx"` のようにドット記法で書いている場合。→ その定義を `[mcp_servers.ts-review-graph]` 見出しと、その直下の通常のキーへ書き直してください。
+3. `[mcp_servers.ts-review-graph]` 本体を書かずに `[mcp_servers.ts-review-graph.command]` / `[mcp_servers.ts-review-graph.args]`（およびその配下）の子テーブルだけを書いている場合。→ `command` / `args` を `[mcp_servers.ts-review-graph]` 直下の通常のキーへ書き直してください。
+
+いずれも、書き直してから `install` を再実行するか、`[mcp_servers.ts-review-graph]` を手動で設定してください。
+
+既存の `.codex/config.toml` を**そもそも正しく読めない**場合（値や文字列が閉じていない、括弧の対応が取れていない、テーブル見出しを解釈できない、`[mcp_servers.ts-review-graph]` セクションやその子テーブル（`[mcp_servers.ts-review-graph.env]` など）、あるいはその配下のキーが重複定義されている、`[[mcp_servers.ts-review-graph]]` で定義されている等）、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（閉じていない文字列・括弧なら閉じる、重複定義は1つへ統合、`[[...]]` は通常のテーブル見出しへ）してから `install` を再実行してください。
+
+既知の制限:
+
+- **project 単位の設定が読まれるのは trust 済みの project だけです。** trust されていない project では Codex が `.codex/config.toml` の `mcp_servers` を読み込まないため、`~/.codex/config.toml` へ同じ `[mcp_servers.ts-review-graph]` を手動で登録してください。trust 状態は `~/.codex/config.toml` 側に `trust_level = "trusted"` として記録されます。
+- **Codex から使えるのは `.codex/config.toml` 経由で登録される MCP tools です。** Claude Code plugin が導入する commands・hooks・skills は `claude plugin install` で Claude Code 側に入るもので、対象 project のディレクトリには置かれないため Codex からは読み込まれません（Codex 自身の hooks / skills 機構とは別物です）。plugin が提供する `Read` 時のブラスト半径アドバイザリ表示も Codex では働きません。`install` が使用方法を追記するのは `CLAUDE.md` なので、Codex のエージェントに恒常的に守らせたい場合は同じ内容を `AGENTS.md` へコピーしてください。
+- **Codex 用の書き込みだけを省く option はありません。** `install` は常に `.codex/config.toml` を作成・更新します（Codex を使わない project にも作られます）。
+- **`uninstall` は `.codex/config.toml` を自動削除しません**（手動削除の案内のみ出します）。
+- custom `--db` を指定した場合でも Codex 用エントリには `env` を書かないため、Codex 側は既定の `.ts-review-graph/graph.db` を参照します。エントリが更新対象の場合、`.codex/config.toml` へ手動で `TS_REVIEW_GRAPH_DB` を足しても次の `install` で除去されるため、custom DB を Codex から使う場合は `~/.codex/config.toml` 側のエントリか、Codex 起動時の環境変数で指定してください。
 
 ## Usage
 
@@ -130,7 +170,7 @@ The six graph-query tools (`get_minimal_context`, `get_impact`, `get_type_usages
 | Known files whose disk mtime is newer than their last full or incremental graph update, or which are missing from disk | Answers, prefixed with `⚠ STALE: N files changed` |
 
 `ts-review-graph status` reports the same verdict on a `health:` line.
-MCP `graph_status` remains quarantine-exempt so it can report raw diagnostics for a broken graph.
+MCP `graph_status` remains quarantine-exempt — it never refuses — and prints the same verdict on its own `health:` line (`OK` / `MISMATCH (reason) — detail` / `STALE (n/m files changed)`, or `判定できません: …` when the check itself fails), so the one tool you use to inspect a broken graph does not report "normal" while the other six refuse.
 
 Graph paths are stored relative to the project root, so a `graph.db` moved or copied
 with its working tree remains usable at the new root. Because `graph.db` is ignored,
