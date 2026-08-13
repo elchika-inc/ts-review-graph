@@ -398,8 +398,15 @@ function buildSectionLines(packageSpec: string): string[] {
  * @throws {CodexConfigParseError} 解釈できない記法に出会った場合（呼び出し側は書き込まないこと）
  */
 export function updateCodexConfig(current: string, packageSpec: string): CodexConfigUpdate {
-  const eol = /\r\n/.test(current) ? "\r\n" : "\n";
-  const lines = current.split(/\r?\n/);
+  // Codex (toml-rs) は BOM 付きの config.toml を問題なくロードする。
+  // 剥がさずに走査すると先頭の U+FEFF を見出しの一部と読んで throw し、
+  // 利用者側は壊れていないのに install 全体が中止する。出力時に付け直す。
+  const BOM = "\uFEFF";
+  const bom = current.startsWith(BOM) ? BOM : "";
+  const source = bom ? current.slice(1) : current;
+
+  const eol = /\r\n/.test(source) ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
   const items = parseItems(lines);
 
   let currentTable: string[] = [];
@@ -496,7 +503,8 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
   }
 
   while (output.at(-1) === "") output.pop();
-  const content = output.length > 0 ? `${output.join(eol)}${eol}` : "";
+  const body = output.length > 0 ? `${output.join(eol)}${eol}` : "";
+  const content = `${bom}${body}`;
   return { content, changed: content !== current };
 }
 

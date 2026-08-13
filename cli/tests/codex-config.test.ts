@@ -253,6 +253,24 @@ startup_timeout_ms = 30000
     expect(result.content).toContain(`    "${SPEC}",`);
   });
 
+  it("BOM 付きファイルを解釈し、BOM を保ったまま更新する", () => {
+    // Codex (toml-rs) は BOM 付きを正常にロードする。ここで throw すると
+    // 利用者側は壊れていないのに install 全体が中止してしまう。
+    const current = `﻿[mcp_servers.other]\ncommand = "other-bin"\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content.startsWith("﻿")).toBe(true);
+    expect(result.content).toContain("[mcp_servers.other]");
+    expect(result.content).toContain("[mcp_servers.ts-review-graph]");
+    // BOM が本文へ紛れ込んでいないこと
+    expect(result.content.slice(1)).not.toContain("﻿");
+  });
+
+  it("BOM 付きでも2回目は変更しない", () => {
+    const first = updateCodexConfig(`﻿[mcp_servers.other]\ncommand = "x"\n`, SPEC).content;
+    expect(updateCodexConfig(first, SPEC).changed).toBe(false);
+  });
+
   it("CRLF のファイルを LF へ書き換えない", () => {
     const current = `[mcp_servers.other]\r\ncommand = "other-bin"\r\n`;
     const result = updateCodexConfig(current, SPEC);
