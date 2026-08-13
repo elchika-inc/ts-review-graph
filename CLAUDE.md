@@ -35,7 +35,7 @@ pnpm monorepo。4 パッケージで構成:
 - `packages/core/src/updater.ts` — 増分更新ロジック
 - `packages/mcp-server/src/tools/index.ts` — 全 MCP ツール定義と登録
 - `cli/src/index.ts` — CLI エントリポイント (install/build/update/status/uninstall)
-- `cli/src/codex-config.ts` — Codex 用 `.codex/config.toml` の追記。中止の粒度は2段（判定軸は「ファイルを正しく読めたか」）— 詳細は同ファイル冒頭のコメント
+- `cli/src/codex-config.ts` — Codex 用 `.codex/config.toml` の追記。中止の粒度は2段（判定軸は「ファイルを正しく読めたか」）— 詳細は `CodexConfigUpdate` の doc コメント
 
 ## Database Schema
 

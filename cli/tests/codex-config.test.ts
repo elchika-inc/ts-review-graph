@@ -786,6 +786,33 @@ describe("updateCodexConfig — fail-closed", () => {
     expect(() => updateCodexConfig(current, SPEC)).not.toThrow();
   });
 
+  it("entryNotAdded は「見出しが無い」と一致する（列挙でなく不変条件）", () => {
+    // README はこの不変条件を先に述べ、例を従える形で書いている。
+    // 個別列挙で書くと系統が増えたときに記述が実装より狭くなる。
+    const noHeader = [
+      `mcp_servers = { other = { command = "x" } }\n`,
+      `[mcp_servers]\nts-review-graph = { command = "npx" }\n`,
+      `mcp_servers.ts-review-graph.command = "npx"\n`,
+      `[mcp_servers.ts-review-graph.command]\nfoo = "bar"\n`,
+    ];
+    for (const current of noHeader) {
+      const result = updateCodexConfig(current, SPEC);
+      expect(result.skippedReason).not.toBeNull();
+      expect(result.entryNotAdded).toBe(true);
+    }
+
+    const withHeader = [
+      `[mcp_servers.ts-review-graph]\ncommand = "docker"\nargs = ["run"]\n`,
+      `[mcp_servers.ts-review-graph]\ncommand = "node"\nargs = ["./s.js"]\n`,
+      `[mcp_servers.ts-review-graph]\ncommand.foo = 1\n`,
+    ];
+    for (const current of withHeader) {
+      const result = updateCodexConfig(current, SPEC);
+      expect(result.skippedReason).not.toBeNull();
+      expect(result.entryNotAdded).toBe(false);
+    }
+  });
+
   it("兄弟キー mcp_servers.other は throw しない（正当な記法を壊さない）", () => {
     const result = updateCodexConfig(`mcp_servers.other.command = "x"\n`, SPEC);
     expect(result.content).toContain(`mcp_servers.other.command = "x"`);

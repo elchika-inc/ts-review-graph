@@ -105,7 +105,7 @@ function readKeyPart(source: string, index: number): { part: string; next: numbe
     if (end === -1) return null;
     return { part: source.slice(index + 1, end), next: end + 1 };
   }
-  const bare = /^[A-Za-z0-9_-]+/.exec(source.slice(index));
+  const bare = /^[A-Za-z0-9_]+/.exec(source.slice(index));
   if (!bare) return null;
   return { part: bare[0], next: index + bare[0].length };
 }

@@ -90,19 +90,21 @@ args = [
 - `command` または `args` をドット記法（`command.foo = ...`）やサブテーブル（`[mcp_servers.ts-review-graph.command]`、その配下も含む）で書いている
 - `mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法（`ts-review-graph = { ... }` など）で定義している
 
-スキップされたうえに**エントリを追加もしない**ケースが2つあります。
+スキップされた場合、**`[mcp_servers.ts-review-graph]` というテーブル見出しがファイルに無いときは、エントリの新規追加も行いません**（末尾に見出しを足すと TOML 仕様違反になる、あるいはどこへ足すべきか決められないため）。上の条件のうち、見出しが無い形で起きるのは次の3つです。
 
-1. `mcp_servers = { ... }` のように `mcp_servers` 自体をインラインテーブルで定義している場合。末尾に見出しを足すと TOML 仕様違反になるため新規追加を行いません。`install` はインラインテーブルの中身までは解釈しないので、`ts-review-graph` エントリが既にあるかどうかも判定できません（エントリが無ければ Codex から使えず、既にあっても version は自動更新されません）。
-2. `[mcp_servers.ts-review-graph]` 本体を書かずに `[mcp_servers.ts-review-graph.command]` などの子テーブルだけを書いている場合。
+1. `mcp_servers = { ... }` のように `mcp_servers` 自体をインラインテーブルで定義している場合。`install` はインラインテーブルの中身までは解釈しないので、`ts-review-graph` エントリが既にあるかどうかも判定できません（エントリが無ければ Codex から使えず、既にあっても version は自動更新されません）。→ `mcp_servers` をテーブル見出し記法（`[mcp_servers]`）へ書き直してください。
+2. `[mcp_servers]` の下に `ts-review-graph = { ... }` と書く、または `mcp_servers.ts-review-graph.command = "npx"` のようにドット記法で書いている場合。→ その定義を `[mcp_servers.ts-review-graph]` 見出しと、その直下の通常のキーへ書き直してください。
+3. `[mcp_servers.ts-review-graph]` 本体を書かずに `[mcp_servers.ts-review-graph.command]` / `[mcp_servers.ts-review-graph.args]`（およびその配下）の子テーブルだけを書いている場合。→ `command` / `args` を `[mcp_servers.ts-review-graph]` 直下の通常のキーへ書き直してください。
 
-いずれも、表示された理由を解消してから `install` を再実行するか、`[mcp_servers.ts-review-graph]` を手動で設定してください（1 なら `mcp_servers` をテーブル見出し記法へ、2 なら `command` / `args` を `[mcp_servers.ts-review-graph]` 直下の通常のキーへ）。
+いずれも、書き直してから `install` を再実行するか、`[mcp_servers.ts-review-graph]` を手動で設定してください。
 
-既存の `.codex/config.toml` を**そもそも正しく読めない**場合（値や文字列が閉じていない、括弧の対応が取れていない、テーブル見出しを解釈できない、`[mcp_servers.ts-review-graph]` セクションやその子テーブル（`[mcp_servers.ts-review-graph.env]` など）、あるいはその配下のキーが重複定義されている、`[[mcp_servers.ts-review-graph]]` で定義されている等）、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（閉じていない文字列・括弧なら閉じる、重複定義は1つへ統合、`[[...]]` は通常のテーブル見出しへ）してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
+既存の `.codex/config.toml` を**そもそも正しく読めない**場合（値や文字列が閉じていない、括弧の対応が取れていない、テーブル見出しを解釈できない、`[mcp_servers.ts-review-graph]` セクションやその子テーブル（`[mcp_servers.ts-review-graph.env]` など）、あるいはその配下のキーが重複定義されている、`[[mcp_servers.ts-review-graph]]` で定義されている等）、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（閉じていない文字列・括弧なら閉じる、重複定義は1つへ統合、`[[...]]` は通常のテーブル見出しへ）してから `install` を再実行してください。
 
 既知の制限:
 
 - **project 単位の設定が読まれるのは trust 済みの project だけです。** trust されていない project では Codex が `.codex/config.toml` の `mcp_servers` を読み込まないため、`~/.codex/config.toml` へ同じ `[mcp_servers.ts-review-graph]` を手動で登録してください。trust 状態は `~/.codex/config.toml` 側に `trust_level = "trusted"` として記録されます。
 - **Codex から使えるのは `.codex/config.toml` 経由で登録される MCP tools です。** Claude Code plugin が導入する commands・hooks・skills は `claude plugin install` で Claude Code 側に入るもので、対象 project のディレクトリには置かれないため Codex からは読み込まれません（Codex 自身の hooks / skills 機構とは別物です）。plugin が提供する `Read` 時のブラスト半径アドバイザリ表示も Codex では働きません。`install` が使用方法を追記するのは `CLAUDE.md` なので、Codex のエージェントに恒常的に守らせたい場合は同じ内容を `AGENTS.md` へコピーしてください。
+- **Codex 用の書き込みだけを省く option はありません。** `install` は常に `.codex/config.toml` を作成・更新します（Codex を使わない project にも作られます）。
 - **`uninstall` は `.codex/config.toml` を自動削除しません**（手動削除の案内のみ出します）。
 - custom `--db` を指定した場合でも Codex 用エントリには `env` を書かないため、Codex 側は既定の `.ts-review-graph/graph.db` を参照します。エントリが更新対象の場合、`.codex/config.toml` へ手動で `TS_REVIEW_GRAPH_DB` を足しても次の `install` で除去されるため、custom DB を Codex から使う場合は `~/.codex/config.toml` 側のエントリか、Codex 起動時の環境変数で指定してください。
 

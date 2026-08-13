@@ -5,17 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.5]
+## [0.5.5] - 2026-08-14
 
 ### Added
-- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` 内の version 指定だけを差し替える（独自に足した引数・`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。`args` に ts-review-graph の package 指定が無い・`args` が無く `command` が `npx` 以外・`command`/`args` がドット記法やサブテーブル・`mcp_servers` やエントリがインラインテーブル記法、のいずれかに当てはまる場合は推測で書き換えず、そのエントリだけ更新せずに警告して `install` は続行する（そのエントリの `env` にも触れない）。`mcp_servers` がインラインテーブルの場合と子テーブルだけがある場合は、エントリの新規追加も行わない。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
+- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` 内の version 指定だけを差し替える（独自に足した引数・`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。`args` に ts-review-graph の package 指定が無い・`args` が無く `command` が `npx` 以外・`command`/`args` がドット記法やサブテーブル・`mcp_servers` やエントリがインラインテーブル記法、のいずれかに当てはまる場合は推測で書き換えず、そのエントリだけ更新せずに警告して `install` は続行する（そのエントリの `env` にも触れない）。スキップされ、かつ `[mcp_servers.ts-review-graph]` 見出しがファイルに無い場合（`mcp_servers` やエントリ自体がインラインテーブル・ドット記法、`command`/`args` の子テーブルだけがある場合）は、エントリの新規追加も行わない。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
 - 既存の `.codex/config.toml` をそもそも正しく読めない場合（値や文字列が閉じていない、重複定義等）は、`install` が `config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` をいずれも書かずに中止する（fail-closed。既存手順どおり `.gitignore` と `.ts-review-graph/ignore` は中止前に作成され得る）
 - `uninstall` が `.codex/config.toml` の手動削除を案内するようにした
 - README に Codex での利用方法と既知の制限（trust 済み project でのみ project 単位設定が読まれる・Claude Code plugin の hooks は Codex では読み込まれない）を追記した
 
 ### Fixed
-- MCP サーバーが DB のオープンに失敗したとき、全ツールが「グラフ未構築 — build_graph を呼び出してください」を返して原因を隠していた問題を、オープン失敗と未構築を区別し、失敗理由と（Node ABI 不一致なら）npx キャッシュ削除の復旧手順を返すよう修正した
-- degraded mode が案内する復旧経路である `build_graph` 自体の DB オープン失敗に、ABI 不一致の復旧手順が付いていなかった問題を修正した
+- MCP サーバーが DB のオープンに失敗したとき、全ツールが「グラフ未構築 — build_graph を呼び出してください」を返して原因を隠していた問題を、オープン失敗と未構築を区別し、`build_graph` 自身の DB オープン失敗を含むすべての経路で失敗理由と（Node ABI 不一致なら）npx キャッシュ削除の復旧手順を返すよう修正した
 
 ### Changed
 - Node ABI 不一致の診断を `packages/core` へ移し、CLI と MCP サーバーが同一の実装を参照するようにした（CLI の出力は変更なし）
