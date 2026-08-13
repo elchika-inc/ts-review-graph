@@ -201,8 +201,14 @@ program
     if (codexUpdate.skippedReason !== null) {
       // 構造は解釈できるが安全に書き換えられないエントリ。install 全体は止めない
       // ——止めると独自の起動方法を設定している利用者が .mcp.json の更新もできなくなる。
-      console.warn(`⚠ .codex/config.toml の [mcp_servers.ts-review-graph] は更新しませんでした: ${codexUpdate.skippedReason}`);
-      console.warn(`  version の更新が必要なら手動で編集してください: ${codexConfigPath}`);
+      console.warn(`⚠ .codex/config.toml の ts-review-graph は登録・更新しませんでした: ${codexUpdate.skippedReason}`);
+      if (codexUpdate.skippedWithoutEntry) {
+        // エントリ自体が無いままなので「version を直せばよい」では抜けられない
+        console.warn("  この設定のままでは Codex から ts-review-graph を使えません。");
+        console.warn(`  mcp_servers をテーブル見出し記法（[mcp_servers.<name>]）へ書き換えて install を再実行するか、手動でエントリを追加してください: ${codexConfigPath}`);
+      } else {
+        console.warn(`  version の更新が必要なら手動で編集してください: ${codexConfigPath}`);
+      }
     } else if (codexUpdate.changed) {
       try {
         mkdirSync(path.dirname(codexConfigPath), { recursive: true });
@@ -223,7 +229,7 @@ program
       // env を書かない方針なので Codex は既定 DB を見る。黙って別 DB を参照させると
       // 今回 MCP 側で潰した「原因が見えないグラフ未構築」が Codex 側で再発する。
       // 書き換えの有無に関わらず出すが、スキップ時はエントリに触れていない
-      // （既存の env がそのまま効く）ので、この警告は事実に反する。
+      // （既存の env がそのまま効く）ので、この警告は事実に反するため出さない。
       console.log("  ⚠ Codex 用エントリは env を持たないため、Codex 側は既定の .ts-review-graph/graph.db を参照します");
     }
 

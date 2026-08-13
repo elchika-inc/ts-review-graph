@@ -47,6 +47,8 @@ function runInstallCapture(root: string, extraArgs: string[] = []): string {
     [cliPath, "install", "--tsconfig", "tsconfig.json", ...extraArgs],
     { cwd: root, encoding: "utf8" }
   );
+  // exit status を捨てると「完走したか」を検証できない
+  expect(result.status).toBe(0);
   return `${result.stdout ?? ""}${result.stderr ?? ""}`;
 }
 
@@ -133,7 +135,7 @@ env = { TS_REVIEW_GRAPH_DB = "/old/absolute/path/.ts-review-graph/graph.db" }
 
     const output = runInstallCapture(root, ["--db", "custom/graph.db"]);
 
-    expect(output).toContain("は更新しませんでした");
+    expect(output).toContain("は登録・更新しませんでした");
     expect(output).not.toContain("既定の .ts-review-graph/graph.db を参照します");
     // エントリは無変更なので既存の env がそのまま効く
     expect(readCodexConfig(root)).toContain(`TS_REVIEW_GRAPH_DB = "/custom/graph.db"`);

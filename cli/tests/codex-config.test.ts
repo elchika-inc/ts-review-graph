@@ -14,7 +14,12 @@ args = [
 describe("updateCodexConfig — 新規作成", () => {
   it("空ファイルには version 固定・env なしのエントリだけを書く", () => {
     const result = updateCodexConfig("", SPEC);
-    expect(result).toEqual({ content: canonical, changed: true, skippedReason: null });
+    expect(result).toEqual({
+      content: canonical,
+      changed: true,
+      skippedReason: null,
+      skippedWithoutEntry: false,
+    });
     expect(result.content).not.toContain("env");
   });
 
@@ -116,11 +121,13 @@ args = [
     // package spec で上書きされて黙って消える。
     const current = `[mcp_servers.ts-review-graph]
 command = "npx"
-args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1", "--config", "/home/me/ts-review-graph.json", "@elchika-inc/ts-review-graph@0.5.4"]
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1", "--config", "/home/me/ts-review-graph.json", "@elchika-inc/ts-review-graph@0.5.4", "@elchika-inc/ts-review-graph-mcp-server-legacy@1.0.0"]
 `;
     const result = updateCodexConfig(current, SPEC);
 
     expect(result.content).toContain(`"--config", "/home/me/ts-review-graph.json"`);
+    // 姉妹パッケージ（真の前方拡張）を巻き込まないこと
+    expect(result.content).toContain(`"@elchika-inc/ts-review-graph-mcp-server-legacy@1.0.0"`);
     // CLI package (mcp-server ではない) も置換対象にしない
     expect(result.content).toContain(`"@elchika-inc/ts-review-graph@0.5.4"`);
     expect(result.content).toContain(`"${SPEC}"`);
@@ -199,6 +206,36 @@ args = ["./dist/server.js", "--log-level", "debug"]
       expect(result.skippedReason).not.toContain("\n");
       expect(result.skippedReason).not.toContain("\r");
     }
+
+    // throw 経路（重複メッセージ）も同じ不変条件の対象
+    const duplicated = `[mcp_servers.ts-review-graph]\ncommand = "npx"\n"${injected}" = 1\n"${injected}" = 2\n`;
+    let thrown = "";
+    try {
+      updateCodexConfig(duplicated, SPEC);
+    } catch (err) {
+      thrown = (err as Error).message;
+    }
+    expect(thrown).not.toBe("");
+    expect(thrown).not.toContain("\n");
+    expect(thrown).not.toContain("\r");
+
+    // 解釈不能な行の経路（bare CR を含む行）
+    let parseThrown = "";
+    try {
+      updateCodexConfig(`[mcp_servers.ts-review-graph\r✓ 偽装\n`, SPEC);
+    } catch (err) {
+      parseThrown = (err as Error).message;
+    }
+    expect(parseThrown).not.toBe("");
+    expect(parseThrown).not.toContain("\r");
+  });
+
+  it("長い値は必ず切り詰める（診断文の長さに上限がある）", () => {
+    const current = `[mcp_servers.ts-review-graph]\ncommand = "${"d".repeat(5000)}"\n`;
+    const reason = updateCodexConfig(current, SPEC).skippedReason ?? "";
+
+    expect(reason).toContain("…");
+    expect(reason.length).toBeLessThanOrEqual(120);
   });
 
   it("長い値は切り詰めてもサロゲートペアを割らない", () => {
@@ -601,16 +638,18 @@ describe("updateCodexConfig — fail-closed", () => {
   // 利用者は壊れていない設定のせいで install を完走できなくなる。
   // 末尾へ見出しを足すと TOML 仕様違反になるため、書かずにスキップする。
   it("インラインテーブル/ドット記法のエントリは書かずにスキップする", () => {
+    // entryExists=false は「エントリが無いまま」＝ Codex から使えない。案内が変わる。
     const cases = [
-      `[mcp_servers]\nts-review-graph = { command = "npx", args = ["-y"] }\n`,
-      `mcp_servers.ts-review-graph.command = "npx"\n`,
-      `mcp_servers = { other = { command = "x" } }\n`,
-      `mcp_servers = {}\n`,
+      { toml: `[mcp_servers]\nts-review-graph = { command = "npx", args = ["-y"] }\n`, entryExists: true },
+      { toml: `mcp_servers.ts-review-graph.command = "npx"\n`, entryExists: true },
+      { toml: `mcp_servers = { other = { command = "x" } }\n`, entryExists: false },
+      { toml: `mcp_servers = {}\n`, entryExists: false },
     ];
-    for (const current of cases) {
+    for (const { toml: current, entryExists } of cases) {
       const result = updateCodexConfig(current, SPEC);
       expect(result.content).toBe(current);
       expect(result.changed).toBe(false);
+      expect(result.skippedWithoutEntry).toBe(!entryExists);
       expect(result.skippedReason).toContain("インラインテーブル/ドット記法");
       // 末尾へ見出しを足していないこと（足すと invalid TOML になる）
       expect(result.content).not.toContain("[mcp_servers.ts-review-graph]");
@@ -638,6 +677,45 @@ describe("updateCodexConfig — fail-closed", () => {
       expect(() => updateCodexConfig(current, SPEC)).toThrow(CodexConfigParseError);
       expect(() => updateCodexConfig(current, SPEC)).toThrow(/重複/);
     }
+  });
+
+  it("キーが互いに素な重複セクションも throw する", () => {
+    // canonical を2つ並べるとキー重複ガードが先に効くため、セクション重複の
+    // 検出そのものが無被覆になる。互いに素なキーで見出し重複だけを起こす。
+    const current = `[mcp_servers.ts-review-graph]\ncommand = "npx"\n\n[mcp_servers.ts-review-graph]\nargs = ["-y", "${SPEC}"]\n`;
+    expect(() => updateCodexConfig(current, SPEC)).toThrow(CodexConfigParseError);
+    expect(() => updateCodexConfig(current, SPEC)).toThrow(/複数回定義/);
+  });
+
+  it("サブテーブル見出しの重複・インラインテーブル内のキー重複も throw する", () => {
+    const subTableDup = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\n\n[mcp_servers.ts-review-graph.env]\nFOO = "a"\n\n[mcp_servers.ts-review-graph.env]\nBAR = "b"\n`;
+    expect(() => updateCodexConfig(subTableDup, SPEC)).toThrow(CodexConfigParseError);
+
+    const inlineDup = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\nenv = { FOO = "a", FOO = "b" }\n`;
+    expect(() => updateCodexConfig(inlineDup, SPEC)).toThrow(CodexConfigParseError);
+  });
+
+  it("command / args のサブテーブル定義は書かずにスキップする", () => {
+    // ドット記法と等価だが、見逃すと rewriteSectionBody が command/args を補い、
+    // 妥当な TOML を壊れた TOML へ変えてしまう（しかも成功と報告する）。
+    // 同名キーとサブテーブルの併存は本当の重複定義なので、対になる方のキーを置く
+    const pairs = [
+      { subTable: "command", key: `args = ["-y", "${SPEC}"]` },
+      { subTable: "args", key: `command = "npx"` },
+    ];
+    for (const { subTable, key } of pairs) {
+      const current = `[mcp_servers.ts-review-graph]\n${key}\n\n[mcp_servers.ts-review-graph.${subTable}]\nfoo = "bar"\n`;
+      const result = updateCodexConfig(current, SPEC);
+      expect(result.content).toBe(current);
+      expect(result.changed).toBe(false);
+      expect(result.skippedReason).toContain("サブテーブル");
+    }
+  });
+
+  it("キーパスの区切りが妥当な TOML を誤検出しない", () => {
+    // 区切りを "." にすると `"a.b"` と `a.b` が衝突して誤って throw する。
+    const current = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\n"a.b" = 1\na.b = 2\n`;
+    expect(() => updateCodexConfig(current, SPEC)).not.toThrow();
   });
 
   it("兄弟キー mcp_servers.other は throw しない（正当な記法を壊さない）", () => {
