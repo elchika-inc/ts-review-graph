@@ -426,6 +426,28 @@ args = ["-y", "${SPEC}"]
     expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
   });
 
+  it("複数行の env インラインテーブルを1行へ畳まない", () => {
+    // 畳むと行末コメントが `}` を飲み込み、codex がロードできていた設定を壊す。
+    // 複数行インラインテーブルは TOML 1.0 では不正だが toml-rs は受理する。
+    const base = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.1.0"]\n`;
+    const multiline = `${base}env = { TS_REVIEW_GRAPH_DB = "/x", A = "1" # note\n      }\n`;
+    const result = updateCodexConfig(multiline, SPEC);
+
+    // env 行には触れない（`}` がコメントへ飲まれた1行にならない）
+    expect(result.content).toContain(`env = { TS_REVIEW_GRAPH_DB = "/x", A = "1" # note`);
+    expect(result.content).not.toContain(`env = { A = "1" # note }`);
+  });
+
+  it("1行の env は値に # を含んでいても畳んで除去する（退行防止）", () => {
+    // 「# を含むなら畳まない」という症状ベースの判定にすると、この正常系が壊れる。
+    const base = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.1.0"]\n`;
+    const single = `${base}env = { TS_REVIEW_GRAPH_DB = "/x", A = "a#b" }\n`;
+    const result = updateCodexConfig(single, SPEC);
+
+    expect(result.content).not.toContain("TS_REVIEW_GRAPH_DB");
+    expect(result.content).toContain(`A = "a#b"`);
+  });
+
   it("インラインテーブルでない env は解釈せずそのまま残す", () => {
     // `env = "a{b"` は妥当な TOML。文字列内の波括弧を値の開始と誤認して
     // 「文字列が閉じられていません」で install 全体を止めてはいけない。

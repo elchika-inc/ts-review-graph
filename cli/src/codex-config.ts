@@ -439,6 +439,12 @@ function replacePackageSpecInArgs(raw: string, packageSpec: string): string | nu
  * - それ以外 → 書き換えた1行
  */
 function removeStaleEnvKey(raw: string): string | null | undefined {
+  // 複数行にまたがるインラインテーブル（TOML 1.0 では不正だが toml-rs は受理する）は
+  // 1行へ畳むと行末コメントが `}` を飲み込み、ロードできていた設定が壊れる。
+  // 症状（`#` の有無）でなく原因（複数行を畳むこと）で切る——
+  // `env = { A = "a#b" }` のような妥当な1行は畳んで問題ない。
+  if (raw.includes("\n")) return undefined;
+
   // 値の開始位置はキー→`=`→空白と辿って決める。raw.indexOf("{") では
   // `env = "a{b"` のように文字列内の波括弧を拾い、妥当な TOML を壊す。
   const keyPath = readKeyPath(raw, 0);
@@ -453,7 +459,7 @@ function removeStaleEnvKey(raw: string): string | null | undefined {
 
   const entries = splitInlineTableEntries(raw.slice(cursor + 1, close));
   const kept = entries.filter((entry) => {
-    const entryKey = readKeyPath(entry, 0);
+    const entryKey = readKeyPath(entry.trim(), 0);
     return !(entryKey && entryKey.parts.length === 1 && entryKey.parts[0] === STALE_ENV_KEY);
   });
 
