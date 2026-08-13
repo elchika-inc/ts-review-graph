@@ -231,6 +231,15 @@ startup_timeout_ms = 30000
     expect(result.content).toContain(`    "${SPEC}",`);
   });
 
+  it("CRLF のファイルを LF へ書き換えない", () => {
+    const current = `[mcp_servers.other]\r\ncommand = "other-bin"\r\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`[mcp_servers.other]\r\ncommand = "other-bin"\r\n`);
+    expect(result.content).toContain(`[mcp_servers.ts-review-graph]\r\n`);
+    expect(result.content).not.toMatch(/[^\r]\n/);
+  });
+
   it("配列内の行頭 [ をテーブル見出しと誤認しない", () => {
     const current = `[mcp_servers.alpha]
 matrix = [

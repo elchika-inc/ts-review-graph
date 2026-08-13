@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -14,8 +14,13 @@ const serverPath = path.resolve(
   "../dist/server.js"
 );
 const roots: string[] = [];
+const children: ChildProcess[] = [];
 
 afterEach(() => {
+  // vitest 側のタイムアウトで内部タイマーが発火しなかった場合でも孤児を残さない
+  for (const child of children.splice(0)) {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -37,21 +42,41 @@ function callGraphStatus(cwd: string): Promise<{ text: string; isError: boolean;
       env: { ...process.env, TS_REVIEW_GRAPH_DB: undefined } as NodeJS.ProcessEnv,
     });
 
-    let stdout = "";
+    children.push(child);
+
+    let pending = "";
     let stderr = "";
+    let settled = false;
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill("SIGTERM");
+      action();
+    };
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error(`timeout. stdout=${stdout} stderr=${stderr}`));
-    }, 20000);
+      finish(() => reject(new Error(`timeout. stderr=${stderr}`)));
+    }, 4000);
 
-    const send = (message: unknown) => child.stdin.write(`${JSON.stringify(message)}\n`);
+    // kill 後に書き込みが走ると未処理 EPIPE でテスト全体が偽赤になる
+    child.stdin.on("error", () => {});
+    const send = (message: unknown) => {
+      if (settled) return;
+      child.stdin.write(`${JSON.stringify(message)}\n`);
+    };
 
+    child.on("error", (err) => finish(() => reject(err)));
     child.stderr.on("data", (chunk) => {
       stderr += String(chunk);
     });
     child.stdout.on("data", (chunk) => {
-      stdout += String(chunk);
-      for (const line of stdout.split("\n")) {
+      // 処理済みの行はバッファから取り除く。累積バッファを再パースすると
+      // 同じ応答を何度も処理し、初期化を再送してしまう。
+      pending += String(chunk);
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+
+      for (const line of lines) {
         if (!line.trim()) continue;
         let message: { id?: number; result?: { content?: { text: string }[]; isError?: boolean } };
         try {
@@ -69,13 +94,13 @@ function callGraphStatus(cwd: string): Promise<{ text: string; isError: boolean;
           });
         }
         if (message.id === 2) {
-          clearTimeout(timer);
-          child.kill("SIGTERM");
-          resolve({
-            text: message.result?.content?.[0]?.text ?? "",
-            isError: message.result?.isError === true,
-            stderr,
-          });
+          finish(() =>
+            resolve({
+              text: message.result?.content?.[0]?.text ?? "",
+              isError: message.result?.isError === true,
+              stderr,
+            })
+          );
         }
       }
     });
