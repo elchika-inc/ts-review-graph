@@ -81,7 +81,7 @@ args = [
 ]
 ```
 
-既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させず、`args` の version を更新します。`command` を独自の値へ変えている場合はそれを保持し、`command` が無いときだけ `"npx"` を補います。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
+既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させず、`args` の中の ts-review-graph の version 指定だけを差し替えます（`--log-level debug` のように独自に足した引数はそのまま残ります）。`command` を独自の値へ変えている場合はそれを保持し、`command` が無いときだけ `"npx"` を補います。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
 
 既存の `.codex/config.toml` に安全に更新できない記法（`mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法・`[[...]]` で定義している、値や文字列が閉じていない等）が含まれる場合、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたパスの該当箇所を通常のテーブル見出し記法へ手動で整理してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
 

@@ -63,7 +63,7 @@ args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
 
     expect(result.content).toContain(`command = "bunx"`);
     expect(result.content).not.toContain(`command = "npx"`);
-    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).toContain(`"${SPEC}"`);
   });
 
   it("command が無いエントリには npx を補う", () => {
@@ -71,6 +71,41 @@ args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
     const result = updateCodexConfig(current, SPEC);
 
     expect(result.content).toContain(`command = "npx"`);
+  });
+
+  it("利用者が args に足した引数を消さない（version 要素だけ差し替える）", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1", "--log-level", "debug"]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(
+      `args = ["-y", "${SPEC}", "--log-level", "debug"]`
+    );
+    expect(result.content).not.toContain("@0.0.1");
+  });
+
+  it("複数行 args でも他要素と整形を保つ", () => {
+    const current = `[mcp_servers.ts-review-graph]
+command = "npx"
+args = [
+    "-y",
+    "@elchika-inc/ts-review-graph-mcp-server@0.0.1",
+    "--verbose",
+]
+`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).toContain(`    "--verbose",`);
+  });
+
+  it("args に自分の package spec が無ければ既定へ揃える", () => {
+    const current = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "somethingelse"]\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain(`    "${SPEC}",`);
   });
 });
 
@@ -237,7 +272,7 @@ model = "gpt-5"
     expect(result.content).toContain(`command = "alpha-bin"`);
     expect(result.content).toContain("[profiles.default]");
     expect(result.content).toContain(`model = "gpt-5"`);
-    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).toContain(`"${SPEC}"`);
     expect(result.content).not.toContain("@0.0.1");
   });
 
@@ -250,7 +285,7 @@ startup_timeout_ms = 30000
     const result = updateCodexConfig(current, SPEC);
 
     expect(result.content).toContain("startup_timeout_ms = 30000");
-    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).toContain(`"${SPEC}"`);
   });
 
   it("BOM 付きファイルを解釈し、BOM を保ったまま更新する", () => {
@@ -307,7 +342,7 @@ command = "alpha-bin"
     // 文字列の中の見出しは既存エントリとして扱わないので、末尾に本物が追記される
     expect(result.content).toContain(`note = """`);
     expect(result.content.trimEnd().endsWith(`]`)).toBe(true);
-    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).toContain(`"${SPEC}"`);
   });
 
   it("エスケープを含む引用見出しも既存エントリとして認識する（重複追記しない）", () => {
@@ -318,7 +353,7 @@ args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
     const result = updateCodexConfig(current, SPEC);
 
     expect(result.content.split("mcp_servers.").length - 1).toBe(1);
-    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).toContain(`"${SPEC}"`);
   });
 
   it("引用付きのテーブル見出しも既存エントリとして認識する", () => {
@@ -330,7 +365,7 @@ args = ["-y", "@elchika-inc/ts-review-graph-mcp-server@0.0.1"]
 
     const occurrences = result.content.split("mcp_servers.").length - 1;
     expect(occurrences).toBe(1);
-    expect(result.content).toContain(`    "${SPEC}",`);
+    expect(result.content).toContain(`"${SPEC}"`);
   });
 });
 

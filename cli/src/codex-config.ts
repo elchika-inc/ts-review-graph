@@ -23,6 +23,8 @@ const SERVER_TABLE_PATH = ["mcp_servers", "ts-review-graph"] as const;
 // 利用者が置いた他の env キーには触れない。
 const STALE_ENV_KEY = "TS_REVIEW_GRAPH_DB";
 
+const MCP_PACKAGE_NAME = "@elchika-inc/ts-review-graph-mcp-server";
+
 // --- キーパスの読み取り -------------------------------------------------
 
 function skipWs(source: string, index: number): number {
@@ -258,6 +260,52 @@ function splitInlineTableEntries(body: string): string[] {
   const tail = body.slice(start);
   if (tail.trim() !== "") entries.push(tail);
   return entries;
+}
+
+/**
+ * `args = [...]` の中の ts-review-graph package spec 要素だけを差し替える。
+ * 配列ごと置き換えると利用者が足した引数（`--log-level debug` など）が黙って消えるため、
+ * 該当の文字列トークンだけを in-place で置換して他の要素と整形を保つ。
+ * 該当要素が無ければ null を返し、呼び出し側が既定の args を書く。
+ */
+function replacePackageSpecInArgs(raw: string, packageSpec: string): string | null {
+  const keyPath = readKeyPath(raw, 0);
+  if (!keyPath) return null;
+  let cursor = skipWs(raw, keyPath.next);
+  if (raw[cursor] !== "=") return null;
+  cursor = skipWs(raw, cursor + 1);
+  if (raw[cursor] !== "[") return null;
+
+  const close = findMatchingBrace(raw, cursor);
+  if (close === null) return null;
+
+  const spans: { start: number; end: number }[] = [];
+  let i = cursor + 1;
+  while (i < close) {
+    const char = raw[i];
+    if (char === '"' || char === "'") {
+      const next = skipAtomic(raw, i);
+      if (next === null) {
+        i++;
+        continue;
+      }
+      if (raw.slice(i + 1, next - 1).startsWith(`${MCP_PACKAGE_NAME}@`)) {
+        spans.push({ start: i, end: next });
+      }
+      i = next;
+      continue;
+    }
+    const skipped = skipAtomic(raw, i);
+    i = skipped === null ? i + 1 : skipped;
+  }
+
+  if (spans.length === 0) return null;
+
+  let out = raw;
+  for (const span of spans.reverse()) {
+    out = `${out.slice(0, span.start)}"${packageSpec}"${out.slice(span.end)}`;
+  }
+  return out;
 }
 
 /**
@@ -547,7 +595,11 @@ function rewriteSectionBody(
           throw new CodexConfigParseError("[mcp_servers.ts-review-graph] に args が重複しています");
         }
         sawArgs = true;
-        body.push(...buildArgsLines(packageSpec));
+        const raw = lines.slice(item.start, item.end + 1).join("\n");
+        const replaced = replacePackageSpecInArgs(raw, packageSpec);
+        // 既存 args に自分の package spec が無ければ、エントリとして壊れているので既定へ揃える
+        if (replaced === null) body.push(...buildArgsLines(packageSpec));
+        else body.push(...replaced.split("\n"));
         continue;
       }
       if (head === "env") {

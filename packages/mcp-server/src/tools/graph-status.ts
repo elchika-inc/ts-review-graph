@@ -2,7 +2,9 @@ import type { Db } from "@elchika-inc/ts-review-graph-core";
 import type { ToolResult } from "./types.js";
 import { formatDbOpenFailureLines, type DbOpenFailure } from "./db-unavailable.js";
 
-export function graphStatus(db: Db | null, dbFailure: DbOpenFailure | null = null): ToolResult {
+// dbFailure は既定値を持たせない — 渡し忘れると「オープン失敗」を「未構築」と誤報するため、
+// 散文のルールではなく型で強制する。
+export function graphStatus(db: Db | null, dbFailure: DbOpenFailure | null): ToolResult {
   if (!db) {
     if (dbFailure) {
       return {

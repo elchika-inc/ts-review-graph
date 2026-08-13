@@ -96,7 +96,7 @@ describe("db=null の理由の出し分け", () => {
   });
 
   it("graph_status も未構築とオープン失敗を区別する", () => {
-    const notBuilt = graphStatus(null);
+    const notBuilt = graphStatus(null, null);
     expect(notBuilt.isError).toBeUndefined();
     expect(notBuilt.content[0]?.text).toContain("グラフ未構築");
 

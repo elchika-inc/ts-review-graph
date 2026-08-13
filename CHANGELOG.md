@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.5]
 
 ### Added
-- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` の version だけを更新する（`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
+- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` 内の version 指定だけを差し替える（独自に足した引数・`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
 - 安全に更新できない記法を含む既存の `.codex/config.toml` に対しては、`install` が `config.json`・`.mcp.json`・`.codex/config.toml` をいずれも書かずに中止する（fail-closed。既存手順どおり `.gitignore` と `.ts-review-graph/ignore` は中止前に作成され得る）
 - `uninstall` が `.codex/config.toml` の手動削除を案内するようにした
 - README に Codex での利用方法と既知の制限（trust 済み project でのみ project 単位設定が読まれる・Claude Code plugin の hooks は Codex では読み込まれない）を追記した
