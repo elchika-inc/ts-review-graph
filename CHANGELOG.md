@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - MCP サーバーが DB のオープンに失敗したとき、全ツールが「グラフ未構築 — build_graph を呼び出してください」を返して原因を隠していた問題を、オープン失敗と未構築を区別し、`build_graph` 自身の DB オープン失敗を含むすべての経路で失敗理由と（Node ABI 不一致なら）npx キャッシュ削除の復旧手順を返すよう修正した
 
+- `install` がグラフ構築の前に `.ts-review-graph/config.json` を書いていた問題を、構築成功後に書くよう修正した。構築が失敗すると config.json だけが新しくなり、それまで健全だったグラフが `tsconfig_drift` で全 MCP ツールから拒否され、復旧手段として案内される `build`（引数なし）も同じ config.json を読むため手で編集するまで復旧できなかった
+- MCP `graph_status` が検疫の判定を表示せず、他ツールが `MISMATCH` で全滅していても「正常」に見えていた問題を、`health:` 行の追加により修正した（検疫免除＝拒否しないことは維持する）
+- MCP `build_graph` の DB オープン失敗が、Node ABI 不一致以外（破損・切り詰め）では案内を1行も返さず DB パスすら出していなかった問題を、DB パスと削除手順を返すよう修正した。全ツールが復旧手段として `build_graph` を案内するため、ここで行き止まりになると閉ループだった
+- `install` の `.mcp.json` 事前検証が構文だけだった問題を、トップレベルと `mcpServers` がプレーンオブジェクトであることを書き込み前に確認するよう修正した（`[]` では「登録しました」と報告しつつ何も書かず、`null` などでは異常終了していた）
+
 ### Changed
 - Node ABI 不一致の診断を `packages/core` へ移し、CLI と MCP サーバーが同一の実装を参照するようにした（CLI の出力は変更なし）
 

@@ -2,7 +2,8 @@
 // MCP サーバー (degraded mode) の双方から参照するため core に置く。
 // 片側にだけ診断があると、同じ ABI 不一致が経路によって「原因不明」に見える。
 
-function shellQuote(value: string): string {
+/** シェルへ貼り付けても壊れない形に引用する。空白入りパスで案内が無言で空振りするのを防ぐ。 */
+export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 

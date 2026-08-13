@@ -1,4 +1,4 @@
-import { formatNpxAbiMismatchGuidance } from "@elchika-inc/ts-review-graph-core";
+import { formatNpxAbiMismatchGuidance, shellQuote } from "@elchika-inc/ts-review-graph-core";
 
 /** DB ファイルは存在したが openDb に失敗した理由。null は「そもそも DB ファイルが無い」を表す。 */
 export interface DbOpenFailure {
@@ -40,7 +40,10 @@ export function formatBuildOpenFailure(
     // 壊れた DB は作り直せる。案内が無いと、全ツールが build_graph を勧めるのに
     // build_graph も同じ理由で失敗する閉ループになる。
     lines.push("  グラフ DB が壊れている可能性があります。次のファイルを削除してから再実行してください:");
-    lines.push(`  rm -f -- ${dbPath} ${dbPath}-wal ${dbPath}-shm`);
+    // 引用しないと空白入りパスで rm が空振りし、exit 0 のまま同じ閉ループへ戻る。
+    // ABI 案内（core の shellQuote）と同じ扱いに揃える。
+    const targets = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`].map(shellQuote);
+    lines.push(`  rm -f -- ${targets.join(" ")}`);
   }
   return lines.join("\n");
 }

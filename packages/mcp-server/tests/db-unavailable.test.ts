@@ -66,6 +66,11 @@ describe("MCP サーバーの ABI 診断参照", () => {
     const missing = formatBuildOpenFailure(dbPath, "boom", false);
     expect(firstLine(missing)).toContain(dbPath);
     expect(missing).not.toContain("rm -f --");
+
+    // 空白入りパスでも貼り付けてそのまま動くこと。引用が無いと rm が空振りし、
+    // exit 0 のまま同じ閉ループへ戻る（案内が嘘になる）。
+    const spaced = formatBuildOpenFailure("/repo/my proj/graph.db", "file is not a database", true);
+    expect(spaced).toContain("rm -f -- '/repo/my proj/graph.db' '/repo/my proj/graph.db-wal' '/repo/my proj/graph.db-shm'");
   });
 
   it("degraded が案内する復旧経路 build_graph も失敗理由を返す", () => {

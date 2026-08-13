@@ -170,7 +170,7 @@ The six graph-query tools (`get_minimal_context`, `get_impact`, `get_type_usages
 | Known files whose disk mtime is newer than their last full or incremental graph update, or which are missing from disk | Answers, prefixed with `⚠ STALE: N files changed` |
 
 `ts-review-graph status` reports the same verdict on a `health:` line.
-MCP `graph_status` remains quarantine-exempt so it can report raw diagnostics for a broken graph.
+MCP `graph_status` remains quarantine-exempt — it never refuses — and prints the same verdict on its own `health:` line (`OK` / `MISMATCH (reason) — detail` / `STALE (n/m files changed)`, or `判定できません: …` when the check itself fails), so the one tool you use to inspect a broken graph does not report "normal" while the other six refuse.
 
 Graph paths are stored relative to the project root, so a `graph.db` moved or copied
 with its working tree remains usable at the new root. Because `graph.db` is ignored,
