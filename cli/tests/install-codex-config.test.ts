@@ -165,6 +165,31 @@ TS_REVIEW_GRAPH_DB = "/in/container/graph.db"
     expect(existsSync(path.join(root, ".ts-review-graph/config.json"))).toBe(true);
   });
 
+  it("エントリを追加できたかどうかで案内を出し分ける", () => {
+    // 既存エントリがある場合は「version を手で直せ」、追加できていない場合は
+    // 断定せず「理由を解消して再実行 or 手動設定」を案内する。
+    const withEntry = createProject();
+    mkdirSync(path.join(withEntry, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(withEntry, ".codex/config.toml"),
+      `[mcp_servers.ts-review-graph]\ncommand = "docker"\nargs = ["run"]\n`
+    );
+    const withEntryOut = runInstallCapture(withEntry);
+    expect(withEntryOut).toContain("version の更新が必要なら手動で編集してください");
+    expect(withEntryOut).not.toContain("エントリを追加できていません");
+
+    const withoutEntry = createProject();
+    mkdirSync(path.join(withoutEntry, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(withoutEntry, ".codex/config.toml"),
+      `mcp_servers = { other = { command = "x" } }\n`
+    );
+    const withoutEntryOut = runInstallCapture(withoutEntry);
+    expect(withoutEntryOut).toContain("エントリを追加できていません");
+    // 断定しないこと（実際には既にエントリがある設定もこの経路へ来る）
+    expect(withoutEntryOut).not.toContain("使えません");
+  });
+
   it("解釈できない .codex/config.toml では設定ファイル群を書かずに失敗する", () => {
     const root = createProject();
     mkdirSync(path.join(root, ".codex"), { recursive: true });

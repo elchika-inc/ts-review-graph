@@ -202,10 +202,11 @@ program
       // 構造は解釈できるが安全に書き換えられないエントリ。install 全体は止めない
       // ——止めると独自の起動方法を設定している利用者が .mcp.json の更新もできなくなる。
       console.warn(`⚠ .codex/config.toml の ts-review-graph は登録・更新しませんでした: ${codexUpdate.skippedReason}`);
-      if (codexUpdate.skippedWithoutEntry) {
-        // エントリ自体が無いままなので「version を直せばよい」では抜けられない
-        console.warn("  この設定のままでは Codex から ts-review-graph を使えません。");
-        console.warn(`  mcp_servers をテーブル見出し記法（[mcp_servers.<name>]）へ書き換えて install を再実行するか、手動でエントリを追加してください: ${codexConfigPath}`);
+      if (codexUpdate.entryNotAdded) {
+        // エントリを追加できていないので「既存の version を直せばよい」では抜けられない。
+        // 既存エントリの有無は判定できないため、断定はしない。
+        console.warn("  ts-review-graph のエントリを追加できていません（既にあるかどうかは自動判定できません）。");
+        console.warn(`  表示された理由を解消して install を再実行するか、[mcp_servers.ts-review-graph] を手動で設定してください: ${codexConfigPath}`);
       } else {
         console.warn(`  version の更新が必要なら手動で編集してください: ${codexConfigPath}`);
       }

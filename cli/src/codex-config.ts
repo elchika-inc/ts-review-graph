@@ -28,13 +28,14 @@ export interface CodexConfigUpdate {
    */
   skippedReason: string | null;
   /**
-   * スキップした結果、ts-review-graph のエントリが存在しないままになったか。
+   * スキップした結果、ts-review-graph のエントリを**追加できなかった**か。
    *
-   * `mcp_servers` 自体がインラインテーブルだと、末尾へ見出しを足すと TOML 仕様違反に
-   * なるため新規追加もできない。既存エントリを更新しなかっただけの場合と違い、
-   * 利用者には編集すべきエントリが無いので、案内を変える必要がある。
+   * true は「既存エントリが無い」ことの断定ではない——`mcp_servers` 自体が
+   * インラインテーブルの場合は中身を解釈しないため、既にエントリがあるかどうかを
+   * 判定できない。いずれにせよ「既存エントリの version を直せばよい」ではないので、
+   * 案内を分ける必要がある。
    */
-  skippedWithoutEntry: boolean;
+  entryNotAdded: boolean;
 }
 
 const SERVER_TABLE_PATH = ["mcp_servers", "ts-review-graph"] as const;
@@ -128,18 +129,55 @@ function readKeyPath(source: string, index: number): { parts: string[]; next: nu
 
 // --- 行走査 -------------------------------------------------------------
 
+type MultilineDelimiter = '"""' | "'''";
+
 interface ScanState {
   depth: number;
-  multiline: '"""' | "'''" | null;
+  multiline: MultilineDelimiter | null;
 }
 
+/**
+ * 複数行文字列の終端位置（閉じ区切りの直後）を返す。見つからなければ null。
+ *
+ * TOML は閉じ区切りの直前に同じ引用符を1〜2個まで置ける（内容として扱われる）。
+ * 最初に見つけた3連で切ると余った引用符が新しい文字列の開始と誤読され、
+ * 妥当な TOML を「閉じられていません」と誤診断して install 全体を止めてしまう。
+ * 基本文字列はエスケープを持つので、エスケープされた引用符も終端と誤認しない。
+ */
+function findMultilineEnd(
+  text: string,
+  from: number,
+  delimiter: MultilineDelimiter
+): number | null {
+  const quote = delimiter[0]!;
+  const escapable = delimiter === '"""';
+  let i = from;
+  while (i < text.length) {
+    if (escapable && text[i] === "\\") {
+      i += 2;
+      continue;
+    }
+    if (!text.startsWith(delimiter, i)) {
+      i++;
+      continue;
+    }
+    let end = i + 3;
+    let extra = 0;
+    while (extra < 2 && text[end] === quote) {
+      end++;
+      extra++;
+    }
+    return end;
+  }
+  return null;
+}
 /** 1行を走査して括弧の深さと複数行文字列の状態を更新する。解釈できない行では throw する。 */
 function scanLine(line: string, state: ScanState): void {
   let i = 0;
   if (state.multiline) {
-    const close = line.indexOf(state.multiline);
-    if (close === -1) return;
-    i = close + 3;
+    const end = findMultilineEnd(line, 0, state.multiline);
+    if (end === null) return;
+    i = end;
     state.multiline = null;
   }
   while (i < line.length) {
@@ -147,12 +185,12 @@ function scanLine(line: string, state: ScanState): void {
     if (char === "#") return; // 文字列外の # は行コメント
     if (line.startsWith('"""', i) || line.startsWith("'''", i)) {
       const delimiter = line.startsWith('"""', i) ? '"""' : "'''";
-      const close = line.indexOf(delimiter, i + 3);
-      if (close === -1) {
+      const end = findMultilineEnd(line, i + 3, delimiter);
+      if (end === null) {
         state.multiline = delimiter;
         return;
       }
-      i = close + 3;
+      i = end;
       continue;
     }
     if (char === '"') {
@@ -210,9 +248,9 @@ function skipAtomic(text: string, i: number): number | null {
   }
   if (text.startsWith('"""', i) || text.startsWith("'''", i)) {
     const delimiter = text.startsWith('"""', i) ? '"""' : "'''";
-    const close = text.indexOf(delimiter, i + 3);
-    if (close === -1) throw new CodexConfigParseError("複数行文字列が閉じられていません");
-    return close + 3;
+    const end = findMultilineEnd(text, i + 3, delimiter);
+    if (end === null) throw new CodexConfigParseError("複数行文字列が閉じられていません");
+    return end;
   }
   if (char === '"') {
     let j = i + 1;
@@ -292,18 +330,55 @@ function findInlineTableDuplicateKey(raw: string): string | null {
   let cursor = skipWs(raw, keyPath.next);
   if (raw[cursor] !== "=") return null;
   cursor = skipWs(raw, cursor + 1);
-  if (raw[cursor] !== "{") return null;
+  return findDuplicateInValue(raw, cursor);
+}
 
-  const close = findMatchingBrace(raw, cursor);
+/** 値がインラインテーブル・配列なら、その中の重複キーを探す。 */
+function findDuplicateInValue(text: string, cursor: number): string | null {
+  const open = text[cursor];
+  if (open !== "{" && open !== "[") return null;
+
+  const close = findMatchingBrace(text, cursor);
   if (close === null) return null;
+  const body = text.slice(cursor + 1, close);
 
+  if (open === "{") return findDuplicateInInlineBody(body);
+
+  // 配列は要素ごとに見る（要素がインラインテーブルなら中も見る）
+  for (const element of splitInlineTableEntries(body)) {
+    const value = element.trim();
+    if (value === "") continue;
+    const nested = findDuplicateInValue(value, 0);
+    if (nested !== null) return nested;
+  }
+  return null;
+}
+
+/**
+ * インラインテーブルの中身を再帰的に走査し、重複キーを探す。
+ * ネストしたインラインテーブル・配列要素まで見ないと、1段深いだけの
+ * 重複を取りこぼして壊れた設定を書き戻してしまう。
+ */
+function findDuplicateInInlineBody(body: string): string | null {
   const seen = new Set<string>();
-  for (const entry of splitInlineTableEntries(raw.slice(cursor + 1, close))) {
+  for (const rawEntry of splitInlineTableEntries(body)) {
+    // 複数行のインラインテーブルでは entry の先頭に改行が残る。
+    // skipWs は改行を飛ばさないので、ここで落としておく。
+    const entry = rawEntry.trim();
+    if (entry === "") continue;
+
     const entryKey = readKeyPath(entry, 0);
     if (!entryKey) continue;
     const joined = entryKey.parts.join("\u0000");
     if (seen.has(joined)) return entryKey.parts.join(".");
     seen.add(joined);
+
+    // 値がインラインテーブル / 配列なら中も見る
+    let cursor = skipWs(entry, entryKey.next);
+    if (entry[cursor] !== "=") continue;
+    cursor = skipWs(entry, cursor + 1);
+    const nested = findDuplicateInValue(entry, cursor);
+    if (nested !== null) return nested;
   }
   return null;
 }
@@ -509,9 +584,6 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
   let currentTable: string[] = [];
   let sectionIndex = -1;
   let inlineSkipReason: string | null = null;
-  // インラインテーブル記法でも、自エントリ自体が値として現れていれば「エントリはある」。
-  // 祖先側（ルートの `mcp_servers = {...}`）は中を解釈できないので「無いかもしれない」に倒す。
-  let inlineEntryFound = false;
   const subTableIndexes: number[] = [];
   // 自エントリ配下のキーパス。重複はファイルを正しく読めていない証拠なので中止する。
   const ownKeyPaths = new Set<string>();
@@ -529,7 +601,7 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
         const headerPath = item.parts.join("\u0000");
         if (ownKeyPaths.has(headerPath)) {
           throw new CodexConfigParseError(
-            `[${item.parts.join(".")}] が複数回定義されています`
+            `${describeTablePath(item.parts)} が複数回定義されています`
           );
         }
         ownKeyPaths.add(headerPath);
@@ -537,13 +609,13 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
         if (samePath(item.parts, SERVER_TABLE_PATH)) {
           sectionIndex = index;
         } else if (
-          samePath(item.parts, [...SERVER_TABLE_PATH, "command"]) ||
-          samePath(item.parts, [...SERVER_TABLE_PATH, "args"])
+          startsWithPath(item.parts, [...SERVER_TABLE_PATH, "command"]) ||
+          startsWithPath(item.parts, [...SERVER_TABLE_PATH, "args"])
         ) {
           // command / args をサブテーブルとして定義している。ドット記法と等価だが、
           // 見逃すと rewriteSectionBody が command/args を補い、妥当な TOML を
           // 壊れた TOML へ変えてしまう（しかも成功と報告する）。
-          inlineSkipReason ??= `${item.parts.at(-1)} がサブテーブル（[${item.parts.join(".")}]）として定義されています`;
+          inlineSkipReason ??= `${item.parts.at(-1)} がサブテーブル（${describeTablePath(item.parts)}）として定義されています`;
           subTableIndexes.push(index);
         } else {
           subTableIndexes.push(index);
@@ -570,7 +642,7 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
       const keyPath = [...currentTable, ...item.parts].join("\u0000");
       if (ownKeyPaths.has(keyPath)) {
         throw new CodexConfigParseError(
-          `[${currentTable.join(".")}] で ${describeValue(item.parts.join("."))} が重複定義されています`
+          `${describeTablePath(currentTable)} で ${describeValue(item.parts.join("."))} が重複定義されています`
         );
       }
       ownKeyPaths.add(keyPath);
@@ -582,14 +654,13 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
       );
       if (duplicated !== null) {
         throw new CodexConfigParseError(
-          `[${currentTable.join(".")}] の ${describeValue(item.parts.join("."))} 内で ` +
+          `${describeTablePath(currentTable)} の ${describeValue(item.parts.join("."))} 内で ` +
             `${describeValue(duplicated)} が重複定義されています`
         );
       }
       continue;
     }
     const absolute = [...currentTable, ...item.parts];
-    if (startsWithPath(absolute, SERVER_TABLE_PATH)) inlineEntryFound = true;
     if (
       startsWithPath(absolute, SERVER_TABLE_PATH) ||
       startsWithPath(SERVER_TABLE_PATH, absolute)
@@ -636,7 +707,7 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
       content: current,
       changed: false,
       skippedReason,
-      skippedWithoutEntry: sectionIndex === -1 && !inlineEntryFound,
+      entryNotAdded: sectionIndex === -1,
     };
   }
 
@@ -664,7 +735,7 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
   while (output.at(-1) === "") output.pop();
   const body = output.length > 0 ? `${output.join(eol)}${eol}` : "";
   const content = `${bom}${body}`;
-  return { content, changed: content !== current, skippedReason, skippedWithoutEntry: false };
+  return { content, changed: content !== current, skippedReason, entryNotAdded: false };
 }
 
 function nextHeaderIndex(items: Item[], from: number): number {
@@ -739,6 +810,14 @@ function findSkipReason(
     return `args が無く command が独自の値（${describeValue(commandValue)}）です`;
   }
   return null;
+}
+
+/**
+ * テーブル見出しのパスを診断文へ埋め込む形に整える。
+ * キー名は設定ファイル由来なので、`.` で連結しただけでは制御文字を持ち込める。
+ */
+function describeTablePath(parts: readonly string[]): string {
+  return describeValue(parts.join("."));
 }
 
 /**

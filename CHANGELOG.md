@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.5]
 
 ### Added
-- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` 内の version 指定だけを差し替える（独自に足した引数・`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。`args` に ts-review-graph の package 指定が無い・`args` が無く `command` が `npx` 以外・`command`/`args` がドット記法やサブテーブル・`mcp_servers` やエントリがインラインテーブル記法、のいずれかに当てはまる場合は推測で書き換えず、そのエントリだけ更新せずに警告して `install` は続行する（そのエントリの `env` にも触れない）。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
+- `install` が Claude Code 用の `.mcp.json` に加えて Codex 用の `.codex/config.toml` にも MCP server を登録するようにした。version 固定・`env` なしで冪等に追記し、既存エントリがあれば `args` 内の version 指定だけを差し替える（独自に足した引数・`command` の独自値は保持し、既存 `env` からは `TS_REVIEW_GRAPH_DB` のみを除去する）。`args` に ts-review-graph の package 指定が無い・`args` が無く `command` が `npx` 以外・`command`/`args` がドット記法やサブテーブル・`mcp_servers` やエントリがインラインテーブル記法、のいずれかに当てはまる場合は推測で書き換えず、そのエントリだけ更新せずに警告して `install` は続行する（そのエントリの `env` にも触れない）。`mcp_servers` がインラインテーブルの場合と子テーブルだけがある場合は、エントリの新規追加も行わない。他の `[mcp_servers.*]` エントリ・他のセクションには触れない
 - 既存の `.codex/config.toml` をそもそも正しく読めない場合（値や文字列が閉じていない、重複定義等）は、`install` が `config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` をいずれも書かずに中止する（fail-closed。既存手順どおり `.gitignore` と `.ts-review-graph/ignore` は中止前に作成され得る）
 - `uninstall` が `.codex/config.toml` の手動削除を案内するようにした
 - README に Codex での利用方法と既知の制限（trust 済み project でのみ project 単位設定が読まれる・Claude Code plugin の hooks は Codex では読み込まれない）を追記した

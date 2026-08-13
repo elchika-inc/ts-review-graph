@@ -87,10 +87,15 @@ args = [
 
 - `args` に `@elchika-inc/ts-review-graph-mcp-server` の指定が無い
 - `args` が無く `command` が `npx` 以外（`command = "docker"` など）
-- `command` または `args` をドット記法（`command.foo = ...`）やサブテーブル（`[mcp_servers.ts-review-graph.command]`）で書いている
+- `command` または `args` をドット記法（`command.foo = ...`）やサブテーブル（`[mcp_servers.ts-review-graph.command]`、その配下も含む）で書いている
 - `mcp_servers` や `mcp_servers.ts-review-graph` をインラインテーブル・ドット記法（`ts-review-graph = { ... }` など）で定義している
 
-なお `mcp_servers = { ... }` のように `mcp_servers` 自体をインラインテーブルで定義している場合は、`[mcp_servers.ts-review-graph]` エントリがまだ無くても**新規追加を行いません**（末尾に見出しを足すと TOML 仕様違反になり、Codex が project 設定を丸ごと読めなくなるため）。この場合 Codex では ts-review-graph が使えないので、`mcp_servers` をテーブル見出し記法（`[mcp_servers.<name>]`）へ書き換えてから `install` を再実行するか、インラインテーブルの中へ手動でエントリを追加してください。
+スキップされたうえに**エントリを追加もしない**ケースが2つあります。
+
+1. `mcp_servers = { ... }` のように `mcp_servers` 自体をインラインテーブルで定義している場合。末尾に見出しを足すと TOML 仕様違反になるため新規追加を行いません。`install` はインラインテーブルの中身までは解釈しないので、`ts-review-graph` エントリが既にあるかどうかも判定できません（エントリが無ければ Codex から使えず、既にあっても version は自動更新されません）。
+2. `[mcp_servers.ts-review-graph]` 本体を書かずに `[mcp_servers.ts-review-graph.command]` などの子テーブルだけを書いている場合。
+
+いずれも、表示された理由を解消してから `install` を再実行するか、`[mcp_servers.ts-review-graph]` を手動で設定してください（1 なら `mcp_servers` をテーブル見出し記法へ、2 なら `command` / `args` を `[mcp_servers.ts-review-graph]` 直下の通常のキーへ）。
 
 既存の `.codex/config.toml` を**そもそも正しく読めない**場合（値や文字列が閉じていない、括弧の対応が取れていない、テーブル見出しを解釈できない、`[mcp_servers.ts-review-graph]` セクションやその子テーブル（`[mcp_servers.ts-review-graph.env]` など）、あるいはその配下のキーが重複定義されている、`[[mcp_servers.ts-review-graph]]` で定義されている等）、`install` は `.ts-review-graph/config.json`・`.mcp.json`・`.codex/config.toml`・`CLAUDE.md` を**いずれも書かずに中止します**（グラフ構築も行われません）。ただし中止より前に実行される `.gitignore` の除外設定と `.ts-review-graph/ignore` の雛形作成は、中止時にも残ることがあります（どちらも冪等です）。表示されたエラーメッセージに従って該当箇所を修正（閉じていない文字列・括弧なら閉じる、重複定義は1つへ統合、`[[...]]` は通常のテーブル見出しへ）してから `install` を再実行してください。Codex 用の書き込みだけを省く option は現在ありません。
 
