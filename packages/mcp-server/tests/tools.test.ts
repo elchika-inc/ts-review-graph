@@ -152,6 +152,8 @@ describe("registerTools", () => {
 
   it("graph_status がノード数を返す", () => {
     const result = registerTools(db, "graph_status", {});
+    // 検疫の判定を隠すと、状態確認に使う唯一のツールが「正常」と嘘をつく
+    expect(result.content[0]?.text).toContain("health:     OK");
     expect(result.content[0].text).toContain("nodes");
     // 3ノード挿入済み (impl.ts, dep.ts, impl.test.ts) — 具体的なカウントを検証
     expect(result.content[0].text).toMatch(/nodes:\s+3/);
@@ -995,6 +997,26 @@ describe("出力サニタイズ（改行インジェクション対策）", () =
 });
 
 describe("検疫の適用", () => {
+  it("旧形式 DB でも graph_status は拒否せず、判定を表示する", () => {
+    // 検疫の免除が正当化するのは「拒否しない」ことであって「判定を隠す」ことではない。
+    // 他ツールが全滅している状態で「正常」を返すと、状態確認の唯一の口が嘘をつく。
+    const legacyPath = `/tmp/ts-rg-legacy-status-${randomUUID()}.db`;
+    const legacyDb = openDb(legacyPath);
+    try {
+      const result = registerTools(legacyDb, "graph_status", {});
+
+      expect(result.isError).not.toBe(true);
+      expect(result.content[0].text).toContain("MISMATCH");
+      expect(result.content[0].text).toContain("legacy_schema");
+    } finally {
+      legacyDb.close();
+      for (const ext of ["", "-wal", "-shm"]) {
+        const p = legacyPath + ext;
+        if (existsSync(p)) rmSync(p);
+      }
+    }
+  });
+
   it("旧形式 DB では get_minimal_context が isError を返す", () => {
     const legacyPath = `/tmp/ts-rg-legacy-${randomUUID()}.db`;
     const legacyDb = openDb(legacyPath);

@@ -46,18 +46,25 @@ describe("MCP サーバーの ABI 診断参照", () => {
   it("build_graph の DB 失敗はパスと復旧手順を出す（案内が閉ループにならない）", () => {
     // 全ツールが build_graph を勧めるのに build_graph も同じ理由で失敗するため、
     // ABI 以外の破損でも「何をすれば直るか」を必ず書く。
-    const corrupted = formatBuildOpenFailure("/repo/.ts-review-graph/graph.db", "file is not a database", true);
-    expect(corrupted).toContain("/repo/.ts-review-graph/graph.db");
+    const dbPath = "/repo/.ts-review-graph/graph.db";
+    // dbPath は先頭行に出ること。全文に対する toContain だと
+    // `rm -f -- <dbPath>` の行に偶然マッチして、先頭行から消えても気付けない。
+    const firstLine = (text: string) => text.split("\n")[0] ?? "";
+
+    const corrupted = formatBuildOpenFailure(dbPath, "file is not a database", true);
+    expect(firstLine(corrupted)).toContain(dbPath);
     expect(corrupted).toContain("rm -f --");
     expect(corrupted).toContain("graph.db-wal");
 
     // ABI 不一致では従来どおり npx キャッシュ削除を案内する
-    const abi = formatBuildOpenFailure("/repo/.ts-review-graph/graph.db", ABI_ERROR, true);
+    const abi = formatBuildOpenFailure(dbPath, ABI_ERROR, true);
+    expect(firstLine(abi)).toContain(dbPath);
     expect(abi).toContain("rm -rf -- '/Users/test/.npm/_npx/08af52269914770e'");
     expect(abi).not.toContain("rm -f --");
 
     // DB ファイルが無いなら削除案内は出さない
-    const missing = formatBuildOpenFailure("/repo/.ts-review-graph/graph.db", "boom", false);
+    const missing = formatBuildOpenFailure(dbPath, "boom", false);
+    expect(firstLine(missing)).toContain(dbPath);
     expect(missing).not.toContain("rm -f --");
   });
 
@@ -115,14 +122,15 @@ describe("db=null の理由の出し分け", () => {
   });
 
   it("graph_status も未構築とオープン失敗を区別する", () => {
-    const notBuilt = graphStatus(null, null);
+    const notBuilt = graphStatus(null, null, "/repo");
     expect(notBuilt.isError).toBeUndefined();
     expect(notBuilt.content[0]?.text).toContain("グラフ未構築");
 
-    const failed = graphStatus(null, {
-      dbPath: "/repo/.ts-review-graph/graph.db",
-      message: "file is not a database",
-    });
+    const failed = graphStatus(
+      null,
+      { dbPath: "/repo/.ts-review-graph/graph.db", message: "file is not a database" },
+      "/repo"
+    );
     expect(failed.isError).toBe(true);
     expect(failed.content[0]?.text).not.toContain("グラフ未構築");
     expect(failed.content[0]?.text).toContain("file is not a database");
