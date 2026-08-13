@@ -813,6 +813,49 @@ describe("updateCodexConfig — fail-closed", () => {
     }
   });
 
+  it("診断文の1行化は重複エラーの全経路でも成立する", () => {
+    // describeTablePath / describeValue の呼び出しは4箇所ある。
+    // 1箇所でも素通しすると成功メッセージと byte 一致する行を注入できる。
+    const fake = "✓ MCP サーバーを .codex/config.toml に登録しました (Codex 用)";
+    const evil = `x\\n${fake}\\nyyy`;
+    const cases = [
+      // 見出しパス（キー重複）
+      `[mcp_servers.ts-review-graph."${evil}"]\nA = 1\nA = 2\n`,
+      // 見出しパス（インラインテーブル内の重複）
+      `[mcp_servers.ts-review-graph."${evil}"]\nenv = { A = 1, A = 2 }\n`,
+      // 重複したキー名そのもの
+      `[mcp_servers.ts-review-graph]\ncommand = "npx"\nenv = { "${evil}" = 1, "${evil}" = 2 }\n`,
+    ];
+    for (const current of cases) {
+      let message = "";
+      try {
+        updateCodexConfig(current, SPEC);
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message).not.toBe("");
+      expect(message).not.toContain("\n");
+      expect(message).not.toContain("\r");
+    }
+  });
+
+  it("リテラル文字列にはエスケープが無い（バックスラッシュで終端を見失わない）", () => {
+    // '''  はエスケープを持たないので、\\ の直後の ''' が終端。
+    // エスケープ扱いにすると妥当な TOML で install が全面中止する。
+    const S = "'".repeat(3);
+    const current = `[mcp_servers.alpha]\nx = ${S}\nend \\${S}\ncommand = "y"\n`;
+    expect(() => updateCodexConfig(current, SPEC)).not.toThrow();
+  });
+
+  it("env の孫テーブルは刈らない（削除対象は env 自身だけ）", () => {
+    const current = `[mcp_servers.ts-review-graph]\ncommand = "npx"\nargs = ["-y", "${SPEC}"]\n\n[mcp_servers.ts-review-graph.env.deep]\nTS_REVIEW_GRAPH_DB = "/keep/me"\n`;
+    const result = updateCodexConfig(current, SPEC);
+
+    expect(result.content).toContain("[mcp_servers.ts-review-graph.env.deep]");
+    expect(result.content).toContain(`TS_REVIEW_GRAPH_DB = "/keep/me"`);
+    expect(result.changed).toBe(false);
+  });
+
   it("兄弟キー mcp_servers.other は throw しない（正当な記法を壊さない）", () => {
     const result = updateCodexConfig(`mcp_servers.other.command = "x"\n`, SPEC);
     expect(result.content).toContain(`mcp_servers.other.command = "x"`);

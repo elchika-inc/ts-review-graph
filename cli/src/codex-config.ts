@@ -105,7 +105,7 @@ function readKeyPart(source: string, index: number): { part: string; next: numbe
     if (end === -1) return null;
     return { part: source.slice(index + 1, end), next: end + 1 };
   }
-  const bare = /^[A-Za-z0-9_]+/.exec(source.slice(index));
+  const bare = /^[A-Za-z0-9_-]+/.exec(source.slice(index));
   if (!bare) return null;
   return { part: bare[0], next: index + bare[0].length };
 }
@@ -615,7 +615,11 @@ export function updateCodexConfig(current: string, packageSpec: string): CodexCo
           // command / args をサブテーブルとして定義している。ドット記法と等価だが、
           // 見逃すと rewriteSectionBody が command/args を補い、妥当な TOML を
           // 壊れた TOML へ変えてしまう（しかも成功と報告する）。
-          inlineSkipReason ??= `${item.parts.at(-1)} がサブテーブル（${describeTablePath(item.parts)}）として定義されています`;
+          // 分岐条件が保証する位置を使う。at(-1) だと prefix 一致で拾った
+          // 第4要素以降（利用者が名付けたキー）が素で診断文へ入り、
+          // 案内するキー名も command/args でなくなる。
+          const subTableKey = item.parts[SERVER_TABLE_PATH.length]!;
+          inlineSkipReason ??= `${subTableKey} がサブテーブル（${describeTablePath(item.parts)}）として定義されています`;
           subTableIndexes.push(index);
         } else {
           subTableIndexes.push(index);
