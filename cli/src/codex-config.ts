@@ -839,7 +839,12 @@ function describeTablePath(parts: readonly string[]): string {
  */
 function describeValue(value: string | null): string {
   if (value === null) return "解釈不能";
-  const encoded = JSON.stringify(value);
+  // JSON.stringify は U+2028 / U+2029 / NEL / VT / FF をエスケープしないため、
+  // 行区切りとして解釈する消費者へ生のまま渡ってしまう。ここで潰しておく。
+  const encoded = JSON.stringify(value).replace(
+    /[\u000b\u000c\u0085\u2028\u2029]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
   if (encoded.length <= 80) return encoded;
   // コードポイント単位で切る。UTF-16 単位だとサロゲートペアを割って U+FFFD になる。
   return `${Array.from(encoded).slice(0, 79).join("")}…`;

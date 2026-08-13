@@ -246,6 +246,17 @@ args = ["./dist/server.js", "--log-level", "debug"]
     }
   });
 
+  it("JSON.stringify が逃さない行区切りも診断文へ生で載せない", () => {
+    // U+2028 / U+2029 / NEL / VT / FF は JSON.stringify がエスケープしない。
+    // 行区切りとして解釈する消費者から見ると行注入になりうる。
+    const separators = ["\u2028", "\u2029", "\u0085", "\u000b", "\u000c"];
+    for (const char of separators) {
+      const current = `[mcp_servers.ts-review-graph]\ncommand = "x${char}fake"\n`;
+      const reason = updateCodexConfig(current, SPEC).skippedReason ?? "";
+      expect(reason).not.toContain(char);
+    }
+  });
+
   it("長い値は必ず切り詰める（診断文の長さに上限がある）", () => {
     const current = `[mcp_servers.ts-review-graph]\ncommand = "${"d".repeat(5000)}"\n`;
     const reason = updateCodexConfig(current, SPEC).skippedReason ?? "";

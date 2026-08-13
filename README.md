@@ -81,7 +81,7 @@ args = [
 ]
 ```
 
-既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させません。**`args` がある場合**、更新できるかは `args` に `@elchika-inc/ts-review-graph-mcp-server` の指定があるかで決まります。指定があれば `command` の値（`docker` 等）に関わらず、その version 指定だけを差し替えます（version が付いていなければ付与します）。**`args` が無い場合**は、`command` が `npx` か未指定のときにかぎり既定の `args` を書き足します。`--log-level debug` のように独自に足した引数はそのまま残り、`command` を独自の値へ変えている場合もそれを保持します（`command` が無いときだけ `"npx"` を補います）。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
+既に `[mcp_servers.ts-review-graph]` がある場合はエントリを重複させません。**`args` がある場合**、更新できるかは `args` に `@elchika-inc/ts-review-graph-mcp-server` の指定があるかで決まります。指定があれば `command` の値（`docker` 等）に関わらず、その version 指定だけを差し替えます（version が付いていなければ付与します）。**`args` が無い場合**は、`command` が `npx` か未指定のときにかぎり既定の `args` を書き足します。`--log-level debug` のように独自に足した引数はそのまま残り、`command` を独自の値へ変えている場合もそれを保持します（`command` が無いときだけ `"npx"` を補います）。`env` は書かず、既存の `TS_REVIEW_GRAPH_DB`（`.mcp.json` から写したパスなど）があれば除去します — `env` の他のキーはそのまま残ります（`env` が複数行のインラインテーブルの場合は、1行へ畳むとファイルが壊れるため触りません）。他の `[mcp_servers.*]` エントリや他のセクションには触れません。
 
 次のいずれかに当てはまるエントリは、どう起動したいのかを推測できないため**そのエントリだけ更新せず警告します**（`env` も含めて一切変更しません）。`install` 自体は続行し、`.mcp.json` などは通常どおり更新されるので、version の更新が必要なら `.codex/config.toml` を手動で編集してください。
 
