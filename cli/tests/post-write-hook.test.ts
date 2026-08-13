@@ -17,6 +17,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const scriptsRoot = path.join(repoRoot, "packages/plugin/hooks/scripts");
 const temporaryRoots: string[] = [];
+const pluginVersion = (
+  JSON.parse(
+    readFileSync(path.join(repoRoot, "packages/plugin/.claude-plugin/plugin.json"), "utf-8")
+  ) as { version: string }
+).version;
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -91,7 +96,7 @@ describe("plugin hooks", () => {
       expect(result.status, result.stderr).toBe(0);
       expect(readFileSync(fixture.capturePath, "utf-8").trim().split("\n")).toEqual([
         "-y",
-        "@elchika-inc/ts-review-graph@0.5.3",
+        `@elchika-inc/ts-review-graph@${pluginVersion}`,
         "update",
         "src/main.ts",
         "--db",

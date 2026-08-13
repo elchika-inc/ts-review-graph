@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-08-13
+
+### Added
+- `cli/package.json` を正本として公開 package と Claude Code plugin 配布物の version を同期する `pnpm sync-version` を追加した
+
+### Fixed
+- project root と対象ファイルで論理パス・物理パスが混在すると、同じプロジェクト内でもルート外と誤判定していた問題を、通常判定が失敗した場合だけ `realpathSync` で再判定するよう修正した
+
+### Changed
+- リリース時の lockstep version 更新を、複数箇所の手動編集から `cli/package.json` の編集と同期スクリプト実行へ変更した
+
 ## [0.5.3] - 2026-08-13
 
 ### Fixed

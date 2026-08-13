@@ -6,6 +6,7 @@
 pnpm build          # 全パッケージをビルド (tsc)
 pnpm test           # 全パッケージのテストを実行 (vitest)
 pnpm lint           # 全パッケージの型チェック (tsc --noEmit)
+pnpm sync-version   # cli/package.json の version を全配布物へ同期
 
 # 特定パッケージのみ
 cd packages/core && pnpm build
@@ -60,8 +61,17 @@ Edge kinds: `IMPORTS_FROM` | `TYPED_BY` | `IMPLEMENTS` | `EXTENDS` | `HAS_TEST`
 - **ESM**: 全パッケージ `"type": "module"`。import パスは `.js` 拡張子必須 (TypeScript でも `import ... from './foo.js'`)
 - **workspace:***: パッケージ間依存は `"workspace:*"` で指定。publish 前に `pnpm publish` で自動解決される
 - **Node.js 20+**: `better-sqlite3` のネイティブビルドに必要
-- **公開物は lockstep version**: core・MCP server・CLI・Claude Code plugin は同一 version で公開する。plugin は `packages/plugin/.claude-plugin/plugin.json` を version の正本とし、marketplace と plugin MCP 設定との一致をテストで固定する。CLI の `install` は CLI 自身の version で `.mcp.json` の MCP server を固定する
+- **公開物は lockstep version**: core・MCP server・CLI・Claude Code plugin は同一 version で公開する。`cli/package.json` を version の正本とし、`pnpm sync-version` で他の package と plugin 配布物へ同期する。一致テストも残し、同期漏れを検出する。CLI の `install` は CLI 自身の version で `.mcp.json` の MCP server を固定する
 - **SQLite DB は .gitignore**: `graph.db`・`graph.db-wal`・`graph.db-shm` はビルドアーティファクト。`config.json` だけコミットする
+
+## Release
+
+1. `cli/package.json` の `version` を上げる
+2. `pnpm sync-version` を実行する
+3. `pnpm build`、`pnpm test`、`pnpm lint` を実行する
+4. 変更をコミットして push する
+5. `pnpm publish -r --access public` を実行する
+6. 導入済みリポジトリで、公開した新 version の CLI に初回と同じ `--tsconfig` / `--db` を指定して `install` を再実行し、`.mcp.json` を更新する
 
 ## Plugin Structure
 
