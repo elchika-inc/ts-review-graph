@@ -104,6 +104,66 @@ describe("computeBlastRadius", () => {
     const result = computeBlastRadius(db, "a.ts", 10);
     expect(result.length).toBeLessThanOrEqual(3);
   });
+
+  it("edgeKinds 省略時は現行の4種類をすべて追跡する", () => {
+    insertNode(db, "changed", "changed.ts");
+    for (const [id, kind] of [
+      ["importer", "IMPORTS_FROM"],
+      ["typed", "TYPED_BY"],
+      ["implementer", "IMPLEMENTS"],
+      ["extender", "EXTENDS"],
+    ] as const) {
+      insertNode(db, id, `${id}.ts`);
+      insertEdge(db, id, "changed", kind);
+    }
+
+    const implicitDefault = computeBlastRadius(db, "changed.ts", 1)
+      .map((node) => node.file)
+      .sort();
+    const explicitDefault = computeBlastRadius(db, "changed.ts", 1, [
+      "IMPORTS_FROM",
+      "TYPED_BY",
+      "IMPLEMENTS",
+      "EXTENDS",
+    ])
+      .map((node) => node.file)
+      .sort();
+
+    expect(implicitDefault).toEqual([
+      "changed.ts",
+      "extender.ts",
+      "implementer.ts",
+      "importer.ts",
+      "typed.ts",
+    ]);
+    expect(implicitDefault).toEqual(explicitDefault);
+  });
+
+  it("edgeKinds=['IMPORTS_FROM'] で型エッジ由来のノードを除外する", () => {
+    insertNode(db, "changed", "changed.ts");
+    insertNode(db, "importer", "importer.ts");
+    insertNode(db, "typed", "typed.ts");
+    insertNode(db, "implementer", "implementer.ts");
+    insertNode(db, "extender", "extender.ts");
+    insertEdge(db, "importer", "changed", "IMPORTS_FROM");
+    insertEdge(db, "typed", "changed", "TYPED_BY");
+    insertEdge(db, "implementer", "changed", "IMPLEMENTS");
+    insertEdge(db, "extender", "changed", "EXTENDS");
+
+    const files = computeBlastRadius(db, "changed.ts", 1, ["IMPORTS_FROM"])
+      .map((node) => node.file)
+      .sort();
+
+    expect(files).toEqual(["changed.ts", "importer.ts"]);
+  });
+
+  it("未対応の edgeKinds を拒否する", () => {
+    insertNode(db, "changed", "changed.ts");
+
+    expect(() =>
+      computeBlastRadius(db, "changed.ts", 1, ["IMPORTS_FROM'); DROP TABLE nodes; --"])
+    ).toThrow("未対応の edge kind");
+  });
 });
 
 describe("computeForwardDeps", () => {
