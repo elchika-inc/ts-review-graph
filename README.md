@@ -11,21 +11,26 @@ Build a TypeScript dependency graph in SQLite and tell Claude Code (via MCP) the
 
 ## Why?
 
-Claude Code reads too many files. It grabs large files one after another and stuffs unrelated code into its context.
+TypeScript の依存関係には、source の文字列や AST だけではなく、Compiler API と互換性のある module / symbol resolution を通さないと見えないものがあります。例えば non-relative import、型の宣言元、`implements` / `extends` の関係です。
 
-ts-review-graph pre-builds the project's dependency graph and instantly computes the **blast radius** (impact surface) of changed files — so Claude only reads what matters.
+ts-review-graph は ts-morph 経由で TypeScript Compiler API の module / symbol resolution を使い、その結果を SQLite graph に保存します。事前構築した graph から変更の blast radius を引くことで、関連度の高いファイルを先に読めます。
 
-### Real-world benchmark (manako project)
+### 0.5.5 co-change ベンチマーク
 
-From [BENCHMARK.md](./BENCHMARK.md):
+3つの TypeScript repository から固定フィルタで抽出した451 commit において、過去に共変更されたファイルの平均 recall は次のとおりでした。
 
-| Metric | Baseline | ts-review-graph | Reduction |
-|---|---|---|---|
-| `Read` tool calls | 14 | 3 | **−79%** |
-| File content bytes | 219,139 | 58,583 | **−73%** |
-| Estimated tokens | ~54,784 | ~14,645 | **−73%** |
+| Prediction | 平均 recall | 中央 recall | 平均 precision |
+|---|---:|---:|---:|
+| `review` | **41.12%** | 25.00% | 15.66% |
+| `implement` | **55.27%** | 50.00% | 10.26% |
+| 同一 directory の全 TypeScript file | 19.28% | 0.00% | 9.19% |
+| graph 内の全 tracked TypeScript file | 94.10% | 100.00% | 0.85% |
 
-Graph size: 1,191 nodes / 1,400+ edges (Cloudflare Workers monorepo)
+また、`node_modules` を除いてプロジェクト内へ解決できた import 1,862件のうち、972件（**52.20%**）は `./` / `../` で始まらない specifier でした。この結果は、相対 specifier の文字列追跡だけでは不十分で、Compiler API と互換性のある module resolution が重要であることを支持します。個々の specifier が `paths`、`baseUrl`、package exports のどれで解決されたかは分類していません。
+
+一方、reverse traversal から `IMPORTS_FROM` 以外の型エッジを除いた ablation（`HAS_TEST` は維持）では、451 commit すべてで recall の低下が 0 でした。このデータセットは型エッジ自体の co-change recall 寄与を支持していません。条件・repository 別の数値と限界は [BENCHMARK.md](./BENCHMARK.md) を参照してください。
+
+> **比較の限界**: 型エッジ ablation は「型エッジを持たない」という一点に限って構文レベルのパーサを近似したものであり、`IMPORTS_FROM` 自体は Compiler API で解決しています。code-review-graph そのものを実行した比較ではありません。
 
 ## Requirements
 
@@ -235,11 +240,11 @@ MIT
 
 ## Packages
 
-| Package | Description | Version |
-|---|---|---|
-| `@elchika-inc/ts-review-graph` | CLI tool | 0.3.0 |
-| `@elchika-inc/ts-review-graph-mcp-server` | MCP server | 0.3.0 |
-| `@elchika-inc/ts-review-graph-core` | Graph build & query engine | 0.3.0 |
+| Package | Description |
+|---|---|
+| `@elchika-inc/ts-review-graph` | CLI tool |
+| `@elchika-inc/ts-review-graph-mcp-server` | MCP server |
+| `@elchika-inc/ts-review-graph-core` | Graph build & query engine |
 
 ## Links
 

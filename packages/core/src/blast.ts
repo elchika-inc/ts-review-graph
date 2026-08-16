@@ -6,6 +6,15 @@ export interface BlastNode {
   depth: number;
 }
 
+const DEFAULT_REVERSE_EDGE_KINDS = [
+  "IMPORTS_FROM",
+  "TYPED_BY",
+  "IMPLEMENTS",
+  "EXTENDS",
+] as const;
+type ReverseEdgeKind = (typeof DEFAULT_REVERSE_EDGE_KINDS)[number];
+const REVERSE_EDGE_KIND_ALLOWLIST = new Set<string>(DEFAULT_REVERSE_EDGE_KINDS);
+
 // 逆方向 BFS: 変更ファイルに依存しているファイルを探す
 // エッジ意味: source が target を依存している
 // → target を変更したとき source が影響を受ける → source を逆探索
@@ -14,7 +23,12 @@ export interface BlastNode {
 // 同一 node_id でも depth や reason が異なれば別行として扱われるため、UNION だけでは
 // サイクルグラフのノード再訪問を防げない。:max_depth が実質的なサイクル終端として機能する。
 // 最終出力の重複は JS レイヤーの seen.has(n.file) で排除する。
-const REVERSE_BFS_SQL = `
+function makeReverseBfsSql(edgeKinds: readonly ReverseEdgeKind[]): string {
+  const edgeFilter = edgeKinds.length === 0
+    ? "0"
+    : `e.kind IN (${edgeKinds.map((_, index) => `:edge_kind_${index}`).join(", ")})`;
+
+  return `
 WITH RECURSIVE blast(node_id, depth, reason) AS (
   SELECT id, 0, 'changed'
   FROM nodes
@@ -26,13 +40,28 @@ WITH RECURSIVE blast(node_id, depth, reason) AS (
   FROM blast b
   JOIN edges e ON e.target_id = b.node_id
   WHERE b.depth < :max_depth
-    AND e.kind IN ('IMPORTS_FROM', 'TYPED_BY', 'IMPLEMENTS', 'EXTENDS')
+    AND ${edgeFilter}
 )
 SELECT DISTINCT n.file, b.reason, b.depth
 FROM blast b
 JOIN nodes n ON n.id = b.node_id
 ORDER BY b.depth, n.file
 `;
+}
+
+function normalizeReverseEdgeKinds(
+  edgeKinds: readonly string[]
+): readonly ReverseEdgeKind[] {
+  const normalized: ReverseEdgeKind[] = [];
+  for (const kind of edgeKinds) {
+    if (!REVERSE_EDGE_KIND_ALLOWLIST.has(kind)) {
+      throw new Error(`未対応の edge kind: ${kind}`);
+    }
+    const allowedKind = kind as ReverseEdgeKind;
+    if (!normalized.includes(allowedKind)) normalized.push(allowedKind);
+  }
+  return normalized;
+}
 
 // HAS_TEST は前方探索: source=実装, target=テスト
 const TEST_LOOKUP_SQL = `
@@ -55,7 +84,7 @@ WHERE src.file = :changed_file
 
 // Db インスタンスごとのステートメントキャッシュ — prepare() の再コンパイルを防ぐ
 const stmtCache = new WeakMap<Db, {
-  reverseBfs: ReturnType<Db["prepare"]>;
+  reverseBfsByKinds: Map<string, ReturnType<Db["prepare"]>>;
   testLookup: ReturnType<Db["prepare"]>;
   forwardDeps: ReturnType<Db["prepare"]>;
 }>();
@@ -64,7 +93,7 @@ function getStmts(db: Db) {
   let stmts = stmtCache.get(db);
   if (!stmts) {
     stmts = {
-      reverseBfs: db.prepare(REVERSE_BFS_SQL),
+      reverseBfsByKinds: new Map(),
       testLookup: db.prepare(TEST_LOOKUP_SQL),
       forwardDeps: db.prepare(FORWARD_DEPS_SQL),
     };
@@ -76,12 +105,28 @@ function getStmts(db: Db) {
 export function computeBlastRadius(
   db: Db,
   changedFile: string,
-  maxDepth: number
+  maxDepth: number,
+  edgeKinds: readonly string[] = DEFAULT_REVERSE_EDGE_KINDS
 ): BlastNode[] {
-  const { reverseBfs, testLookup } = getStmts(db);
+  const normalizedEdgeKinds = normalizeReverseEdgeKinds(edgeKinds);
+  const { reverseBfsByKinds, testLookup } = getStmts(db);
+  const cacheKey = normalizedEdgeKinds.join(",");
+  let reverseBfs = reverseBfsByKinds.get(cacheKey);
+  if (!reverseBfs) {
+    reverseBfs = db.prepare(makeReverseBfsSql(normalizedEdgeKinds));
+    reverseBfsByKinds.set(cacheKey, reverseBfs);
+  }
+
+  const reverseParams: Record<string, string | number> = {
+    changed_file: changedFile,
+    max_depth: maxDepth,
+  };
+  normalizedEdgeKinds.forEach((kind, index) => {
+    reverseParams[`edge_kind_${index}`] = kind;
+  });
 
   const reverseNodes = reverseBfs
-    .all({ changed_file: changedFile, max_depth: maxDepth }) as BlastNode[];
+    .all(reverseParams) as BlastNode[];
 
   const testNodes = testLookup
     .all({ changed_file: changedFile }) as BlastNode[];
