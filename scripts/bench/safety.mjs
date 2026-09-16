@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 
 const RESERVED_REPOSITORY_NAMES = new Set([
@@ -56,7 +56,7 @@ export function assertSafeOutputDirectory(outDir, repositoryRoots) {
   const physicalOutDir = resolveThroughExistingAncestor(resolvedOutDir);
 
   for (const repositoryRoot of repositoryRoots) {
-    const physicalRepositoryRoot = realpathSync(repositoryRoot);
+    const physicalRepositoryRoot = resolveThroughExistingAncestor(repositoryRoot);
     if (isInside(physicalRepositoryRoot, physicalOutDir)) {
       throw new Error(
         `scratch DB の出力先は対象 repository の外側に指定してください: ${resolvedOutDir}`
@@ -90,7 +90,7 @@ export function assertSafeDatabasePath(dbPath, repositoryRoots) {
 
     const physicalPath = resolveThroughExistingAncestor(sqlitePath);
     for (const repositoryRoot of repositoryRoots) {
-      const physicalRepositoryRoot = realpathSync(repositoryRoot);
+      const physicalRepositoryRoot = resolveThroughExistingAncestor(repositoryRoot);
       if (isInside(physicalRepositoryRoot, physicalPath)) {
         throw new Error(
           `scratch DB は対象 repository の外側に指定してください: ${sqlitePath}`
@@ -100,4 +100,33 @@ export function assertSafeDatabasePath(dbPath, repositoryRoots) {
   }
 
   return resolvedDbPath;
+}
+
+// crg は SQLite 以外に registry や補助ファイルも書くため、既存の子孫も検査する。
+function assertNoSymlinks(candidate) {
+  const stat = lstatSync(candidate, { throwIfNoEntry: false });
+  if (!stat) return;
+  if (stat.isSymbolicLink()) {
+    throw new Error(`crg の出力先に symlink は指定できません: ${candidate}`);
+  }
+  if (stat.isDirectory()) {
+    for (const name of readdirSync(candidate)) assertNoSymlinks(path.join(candidate, name));
+  }
+}
+
+export function assertSafeCrgPaths(outDir, name, repositoryRoots) {
+  validateRepositoryName(name);
+  const home = path.join(outDir, "crg-home");
+  const dataRoot = path.join(outDir, "crg");
+  const dataDir = path.join(dataRoot, name);
+  for (const candidate of [outDir, home, dataRoot, dataDir]) {
+    assertSafeOutputDirectory(candidate, repositoryRoots);
+    if (lstatSync(candidate, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      throw new Error(`crg の出力先に symlink は指定できません: ${candidate}`);
+    }
+  }
+  assertNoSymlinks(home);
+  assertNoSymlinks(dataDir);
+  assertSafeDatabasePath(path.join(dataDir, "graph.db"), repositoryRoots);
+  return { home, dataDir };
 }

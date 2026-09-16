@@ -15,22 +15,21 @@ TypeScript の依存関係には、source の文字列や AST だけではなく
 
 ts-review-graph は ts-morph 経由で TypeScript Compiler API の module / symbol resolution を使い、その結果を SQLite graph に保存します。事前構築した graph から変更の blast radius を引くことで、関連度の高いファイルを先に読めます。
 
-### 0.5.5 co-change ベンチマーク
+### co-change ベンチマーク（0.5.5 core・2026-09-16 再測定）
 
-3つの TypeScript repository から固定フィルタで抽出した451 commit において、過去に共変更されたファイルの平均 recall は次のとおりでした。
+同じ固定 snapshot の3リポジトリ・501 commit で、code-review-graph 2.3.8 本体と比較しました。reverse depth 2 の平均 recall は **ts-review-graph 41.55% / code-review-graph 43.60%** でした。
 
-| Prediction | 平均 recall | 中央 recall | 平均 precision |
+| 手法 | Recall 平均 | Precision 平均 | 平均予測数 |
 |---|---:|---:|---:|
-| `review` | **41.12%** | 25.00% | 15.66% |
-| `implement` | **55.27%** | 50.00% | 10.26% |
-| 同一 directory の全 TypeScript file | 19.28% | 0.00% | 9.19% |
-| graph 内の全 tracked TypeScript file | 94.10% | 100.00% | 0.85% |
+| ts-review-graph depth 2 / review | 41.55% | 14.49% | 24.73 |
+| code-review-graph depth 2 | 43.60% | 16.54% | 22.24 |
+| ts-review-graph implement（FORWARD を追加） | 55.56% | 10.43% | 40.30 |
 
-また、`node_modules` を除いてプロジェクト内へ解決できた import 1,862件のうち、972件（**52.20%**）は `./` / `../` で始まらない specifier でした。この結果は、相対 specifier の文字列追跡だけでは不十分で、Compiler API と互換性のある module resolution が重要であることを支持します。個々の specifier が `paths`、`baseUrl`、package exports のどれで解決されたかは分類していません。
+code-review-graph の未解決 workspace import は全体 **397行** でした。同じ source 223ファイルから ts-review-graph がプロジェクト内へ解決した import は 947エッジです（相対 import 等も含むため、1対1の修復件数ではありません）。型エッジ ablation の全体 recall 差は review +0.00pt、implement +0.00pt でした。
 
-一方、reverse traversal から `IMPORTS_FROM` 以外の型エッジを除いた ablation（`HAS_TEST` は維持）では、451 commit すべてで recall の低下が 0 でした。このデータセットは型エッジ自体の co-change recall 寄与を支持していません。条件・repository 別の数値と限界は [BENCHMARK.md](./BENCHMARK.md) を参照してください。
+> **比較の限界**: code-review-graph 本体を実行した比較ですが、crg の depth はノード間の `CALLS` / `REFERENCES` / `TESTED_BY` 等を跨ぐため、深さの対応は名目上です。tsconfig の include 外も走査するので、カバレッジの違いも含みます。
 
-> **比較の限界**: 型エッジ ablation は「型エッジを持たない」という一点に限って構文レベルのパーサを近似したものであり、`IMPORTS_FROM` 自体は Compiler API で解決しています。code-review-graph そのものを実行した比較ではありません。
+製品 baseline は `main` `bc136afdfc47b7f4fcc4e8bcfcbe36ea75ba522f`。snapshot・precision 除外・depth 3・改善/悪化件数・再現手順は [BENCHMARK.md](./BENCHMARK.md) に記載しています。
 
 ## Requirements
 
