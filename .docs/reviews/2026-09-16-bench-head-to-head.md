@@ -90,7 +90,7 @@ grep -n "263de19dd" BENCHMARK.md README.md
 
 ### 8. 所要時間・測定範囲
 
-2回とも build と impact を逐次実行した。対象は上記3 repository の固定 snapshot で、製品ソース・version・co-change フィルタを変更せずに全体を再測定した。所要時間は終了時に記録する。
+2回とも build と impact を逐次実行した。対象は上記3 repository の固定 snapshot で、製品ソース・version・co-change フィルタを変更せずに全体を再測定した。stderr ファイルの作成時刻から JSON の最終書込時刻まで、run1 は412.9秒、run2 は476.8秒だった。これは測定処理の経過時間であり、両ツールの速度比較ではない。
 
 ## 追加命中の読み取り専用診断
 
@@ -98,11 +98,35 @@ grep -n "263de19dd" BENCHMARK.md README.md
 
 ## レビューサイクル
 
-独立レビュアーによる7レンズレビューを実施予定。終了結果を確認して追記する。
+### Round 1
 
-`INSPECTION_STATUS: PENDING`
+Orca 経由の reviewer 起動が `consumer_fenced` で拒否されたため、司令塔承認により代替経路へ切り替えた。開始 receipt は `/tmp/bench-head-to-head-review-start.json`。対象 commit `f3e7471` を `/tmp/bench-head-to-head-review-copy-r1` に展開し、Claude CLI `--print --model sonnet`、`--tools Read,Grep,Glob`、`--restricted`、`--safe-mode`、`--strict-mcp-config` を使った。実際の主レビュー model は `claude-sonnet-5`（結果 metadata に補助処理の `claude-haiku-4-5-20251001` も記録）だった。
+
+レビュー結果 JSON は `/tmp/bench-head-to-head-review-r1.json`。`subtype=success`、`is_error=false`、19 turns、396072ms。シェル経路の一時応答停止によりプロセスの終了コード再取得はできなかったが、7つの findings ブロックの本文・形式・role集合を独立検査し、原文をレンズごとに永続化した。元 worktree の対象5ファイルの SHA-256 はレビュー前後ですべて一致した。
+
+| レンズ | flag | optional |
+|---|---:|---:|
+| Fresh Eyes | 0 | 0 |
+| Security | 0 | 1 |
+| Core Logic | 0 | 1 |
+| Tests | 0 | 1 |
+| Domain | 0 | 0 |
+| Ambiguity Hunter | 0 | 0 |
+| Altitude Checker | 0 | 1 |
+
+optional は build 後の再 symlink 検査、採点前sortの算術上の冗長さ、新規crg集計関数の単体テスト、前後の多重不変検査へのコメントだった。終了条件外として記録し変更しない（sort と前後検査は委任仕様の明示要件）。偽陽性登録なし、flag の受容・格下げなし、初回クリーンラウンドで終了した。
+
+`INSPECTION_STATUS: CLEAN; rounds=1; flag=0; optional=4`
+
+サイクル記録: [2026-09-16-bench-head-to-head](cycles/2026-09-16-bench-head-to-head.md)。
 
 ## ACCEPTED_RISKS
 
 - 既存 runner の Git quoted path の一般的な制約は残る。今回の3固定 tree では quoted path 0件であり、既知 path `package.json` が同じ一覧に存在することも確認した。掲載値への影響はない。
 - crg と ts-review-graph の depth の意味・カバレッジは異なり、同じ探索量や recall 差の因果分解を保証しない。文書に条件を明記した。
+
+## GitHub 接続の状況
+
+PR 事前確認の `gh pr list` / `gh api user` / `gh api repos/...` は再試行しても `dial tcp 20.27.177.116:443: connect: can't assign requested address` で失敗した。`gh auth status` の invalid 表示だけを認証失効とは解釈せず、認証情報は変更していない。司令塔でも curl / git ls-remote の同じ接続不可を確認し、機械側の環境障害と裁定した。
+
+司令塔の追加裁定に従い、レビュー・最終 commit・`/tmp/bench-head-to-head-pr-body.md` の準備を完了した後に push / PR 作成を各1回再試行する。接続不可が続けば両操作を未完と明記し、復旧後の後続 dispatch で同じ担当が実行する。
