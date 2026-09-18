@@ -1,7 +1,0 @@
-{
-  "tsconfigs": [
-    "packages/core/tsconfig.json",
-    "packages/mcp-server/tsconfig.json",
-    "cli/tsconfig.json"
-  ]
-}

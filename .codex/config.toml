@@ -1,6 +1,0 @@
-[mcp_servers.ts-review-graph]
-command = "npx"
-args = [
-    "-y",
-    "@elchika-inc/ts-review-graph-mcp-server@0.5.5",
-]
