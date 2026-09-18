@@ -245,3 +245,4 @@ JSON は schemaVersion 2。2回の実行は `cmp` exit 0 で一致し、SHA-256 
 - グラフ入力は working tree。input digest は指定 tsconfig・graph ソース等に限定し、全依存 package の内容まで固定していない。
 - Git quoted path の一般的な扱いは既存 runner の制約が残る。対象3 snapshot の掲載測定では quoted path が0件であることを検査した。
 - この3 repository / snapshot / tsconfig 構成に限った結果であり、他言語や他プロジェクトへの一般化は検証していない。トークン削減・実作業時間の比較は測定していない。
+- 起点は各 commit の辞書順先頭のファイルなので `apps/*` に偏る。`packages/*` 配下が起点となる commit は manako 21・todoke 1・miseru 0 の計 22 件（司令塔が同じ履歴フィルタで数えた概算。固定 SHA の tree 存在チェックを省いた母集団 699 件に対する値で、掲載の 501 件を分母にしても 22 件を超えない）。共有パッケージを起点にした比較はほぼ含まれず、workspace import 解決の差が recall に現れにくい設計になっている。

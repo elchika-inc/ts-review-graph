@@ -5,6 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org/)
 
+> **このプロジェクトは 2026-09-17 にクローズしました。** 新規の機能追加・不具合修正・リリースは行いません。
+> 理由: 同一条件の head-to-head ベンチマーク（[BENCHMARK.md](./BENCHMARK.md)）で、元となった [code-review-graph](https://github.com/satwikjambula/code-review-graph) に対する共変更 recall の優位が確認できなかったため。残る差は pnpm workspace の import 解決だけで、これは code-review-graph の issue #343 を上流で直す方が維持コストが低いと判断した。
+> 代替は code-review-graph を推奨する。npm パッケージは deprecate 済み（0.5.5 が最終版）。
+
 Build a TypeScript dependency graph in SQLite and tell Claude Code (via MCP) the **minimal file set to read** before any code review, implementation, or debugging session.
 
 > **日本語**: TypeScript プロジェクトの依存グラフを SQLite に構築し、コードレビュー・実装・デバッグ前に「読むべき最小ファイルセット」を Claude Code (MCP) に伝えるツール。
