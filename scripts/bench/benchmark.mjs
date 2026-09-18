@@ -2,13 +2,14 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   assertAbsoluteOutputDirectory,
+  assertSafeCrgPaths,
   assertSafeDatabasePath,
   assertSafeOutputDirectory,
   validateRepositoryName,
@@ -24,6 +25,9 @@ const {
 
 const requireFromCore = createRequire(new URL("../../packages/core/package.json", import.meta.url));
 const { Project } = requireFromCore("ts-morph");
+const Database = requireFromCore("better-sqlite3");
+const CRG_VERSION = "2.3.8";
+const COMPARISON_DEPTHS = [2, 3];
 
 const SINCE = "2026-02-17";
 const MIN_CHANGED_FILES = 2;
@@ -33,17 +37,17 @@ const DEFAULT_REPOSITORIES = [
   {
     name: "manako",
     root: "/Users/nishikawa/projects/elchika-inc/manako",
-    expectedHead: "ad2cd3393cebb1f53e258b5ef2494780d736ba63",
+    expectedHead: "412df2b4a66b8afdc4d2c6619457bd15dcb393fa",
   },
   {
     name: "todoke",
     root: "/Users/nishikawa/projects/elchika-inc/todoke",
-    expectedHead: "645eab2e824e9c1e53e325c4064c6236d8c53471",
+    expectedHead: "59ee17770255d7963597c73c2c84e019d76def04",
   },
   {
     name: "miseru",
     root: "/Users/nishikawa/projects/elchika-inc/miseru",
-    expectedHead: "263de19dd9d4423427dffd54b6a9c9a7b012ea25",
+    expectedHead: "6aa3b7f0c8b91e687f6f7fa9303b5e9f5a9baeed",
   },
 ];
 
@@ -195,6 +199,7 @@ function rounded(value) {
 }
 
 function score(prediction, groundTruth) {
+  prediction = new Set([...prediction].sort());
   let hits = 0;
   for (const file of prediction) {
     if (groundTruth.has(file)) hits += 1;
@@ -238,6 +243,7 @@ function summarizeRecallDelta(fullScores, ablatedScores) {
     mean: rounded(mean(deltas)),
     median: rounded(median(deltas)),
     improvedCommits: deltas.filter((delta) => delta > 0).length,
+    worsenedCommits: deltas.filter((delta) => delta < 0).length,
     unchangedCommits: deltas.filter((delta) => delta === 0).length,
   };
 }
@@ -254,7 +260,7 @@ function predictionFor(db, origin, mode, edgeKinds) {
   return prediction;
 }
 
-function benchmarkCommits(db, commits, graphFiles, trackedProjectFiles) {
+function benchmarkCommits(db, commits, graphFiles, trackedProjectFiles, root, crg) {
   const observations = [];
   for (const commit of commits) {
     const [origin, ...coChanged] = commit.files;
@@ -267,6 +273,16 @@ function benchmarkCommits(db, commits, graphFiles, trackedProjectFiles) {
 
     observations.push({
       changedFiles: commit.files.length,
+      headToHead: Object.fromEntries(COMPARISON_DEPTHS.map((depth) => {
+        const prediction = new Set(computeBlastRadius(db, origin, depth).map((node) => node.file));
+        prediction.delete(origin);
+        return [depth, {
+          tsReviewGraph: scoreForEvaluation(prediction, groundTruth, trackedProjectFiles).tracked,
+          codeReviewGraph: scoreForEvaluation(
+            crgPrediction(root, origin, depth, crg), groundTruth, trackedProjectFiles
+          ).tracked,
+        }];
+      })),
       review: {
         full: scoreForEvaluation(
           predictionFor(db, origin, "review", undefined),
@@ -327,6 +343,15 @@ function summarizeObservations(observations) {
   return {
     eligibleCommits: observations.length,
     meanChangedFiles: rounded(mean(observations.map((entry) => entry.changedFiles))),
+    headToHead: Object.fromEntries(COMPARISON_DEPTHS.map((depth) => {
+      const tsScores = observations.map((entry) => entry.headToHead[depth].tsReviewGraph);
+      const crgScores = observations.map((entry) => entry.headToHead[depth].codeReviewGraph);
+      return [depth, {
+        tsReviewGraph: summarizeScores(tsScores),
+        codeReviewGraph: summarizeScores(crgScores),
+        recallDelta: summarizeRecallDelta(tsScores, crgScores),
+      }];
+    })),
     modes: {
       review: {
         full: summarizePairs(reviewFull),
@@ -453,7 +478,8 @@ function digestGraphInputs(root, files, tsconfigs) {
   return hash.digest("hex");
 }
 
-function benchmarkRepository(repository, outDir) {
+function benchmarkRepository(repository, outDir, protectedRoots) {
+  assertRepositoryUnchanged(repository.root);
   const startHead = runGit(repository.root, ["rev-parse", "HEAD"]);
   if (repository.expectedHead && startHead !== repository.expectedHead) {
     throw new Error(
@@ -462,7 +488,9 @@ function benchmarkRepository(repository, outDir) {
   }
   const tsconfigs = readTsconfigs(repository.root);
   const fixedSnapshot = repository.expectedHead ?? startHead;
-  const trackedProjectFiles = snapshotFiles(repository.root, fixedSnapshot);
+  const trackedProjectFiles = new Set(
+    [...snapshotFiles(repository.root, fixedSnapshot)].filter((file) => /\.tsx?$/.test(file))
+  );
   const graphInputFilesAtStart = collectGraphInputFiles(repository.root, tsconfigs);
   const graphInputDigestAtStart = digestGraphInputs(
     repository.root,
@@ -470,23 +498,35 @@ function benchmarkRepository(repository, outDir) {
     tsconfigs
   );
   const dbPath = path.join(outDir, `${repository.name}.db`);
-  assertSafeDatabasePath(dbPath, [repository.root]);
+  assertSafeDatabasePath(dbPath, protectedRoots);
   process.stderr.write(`[構築] ${repository.name}: ${dbPath}\n`);
+  const crg = buildCrg(repository, outDir, protectedRoots);
   const db = openDb(dbPath);
   let stats;
   let observations;
   let sourceFiles;
+  let coverage;
+  let workspaceImports;
   try {
     buildFullGraph(db, tsconfigs, repository.root);
     stats = graphStats(db);
     sourceFiles = graphFiles(db);
+    const crgDb = new Database(path.join(crg.dataDir, "graph.db"), { readonly: true, fileMustExist: true });
+    try {
+      coverage = measureCoverage(db, crgDb, repository.root, trackedProjectFiles);
+      workspaceImports = measureWorkspaceImports(db, crgDb, repository.root);
+    } finally {
+      crgDb.close();
+    }
     const commits = eligibleCommits(repository.root, trackedProjectFiles);
     process.stderr.write(`[測定] ${repository.name}: ${commits.length} commits\n`);
     observations = benchmarkCommits(
       db,
       commits,
       sourceFiles,
-      trackedProjectFiles
+      trackedProjectFiles,
+      repository.root,
+      crg
     );
   } finally {
     db.close();
@@ -513,6 +553,8 @@ function benchmarkRepository(repository, outDir) {
     throw new Error(`${repository.name} の HEAD が測定中に変化しました: ${startHead} -> ${endHead}`);
   }
 
+  assertRepositoryUnchanged(repository.root);
+
   return {
     result: {
       root: repository.root,
@@ -520,6 +562,8 @@ function benchmarkRepository(repository, outDir) {
       dbPath,
       tsconfigs: tsconfigs.map((tsconfig) => path.relative(repository.root, tsconfig)),
       graph: stats,
+      coverage,
+      workspaceImports,
       graphInputs: {
         sha256: graphInputDigestAtStart,
         untrackedFiles: untrackedGraphFiles,
@@ -531,17 +575,160 @@ function benchmarkRepository(repository, outDir) {
   };
 }
 
+function assertRepositoryUnchanged(root) {
+  if (runGit(root, ["status", "--porcelain"]) !== "") {
+    throw new Error(`対象 repository の working tree が clean ではありません: ${root}`);
+  }
+  if (lstatSync(path.join(root, ".code-review-graph"), { throwIfNoEntry: false })) {
+    throw new Error(`対象 repository に .code-review-graph が存在します: ${root}`);
+  }
+}
+
+function runCrg(args, crg, logName) {
+  const stderrPath = path.join(crg.dataDir, logName);
+  const stderrFd = openSync(stderrPath, "w");
+  let stdout;
+  try {
+    stdout = execFileSync("uvx", ["--from", "code-review-graph==2.3.8", "code-review-graph", ...args], {
+      encoding: "utf8",
+      maxBuffer: 128 * 1024 * 1024,
+      env: { ...process.env, CRG_HOME: crg.home, CRG_PARSER_LOAD_TIMEOUT_SECONDS: "120" },
+      stdio: ["ignore", "pipe", stderrFd],
+    });
+  } finally {
+    closeSync(stderrFd);
+    // stderr は省略せず scratch に保存し、成功扱いの parser skip も失敗にする。
+    const stderr = readFileSync(stderrPath, "utf8");
+    if (stderr.includes("Skipping unavailable tree-sitter parser")) {
+      throw new Error(`Skipping unavailable tree-sitter parser を検出: ${stderrPath}\n${stderr}`);
+    }
+  }
+  return stdout;
+}
+
+let crgVersion;
+function buildCrg(repository, outDir, protectedRoots) {
+  const crg = assertSafeCrgPaths(outDir, repository.name, protectedRoots);
+  mkdirSync(crg.home, { recursive: true });
+  mkdirSync(crg.dataDir, { recursive: true });
+  const versionOutput = runCrg(["--version"], crg, "version.stderr.log").trim();
+  const version = versionOutput.match(/\b\d+\.\d+\.\d+\b/)?.[0];
+  if (version !== CRG_VERSION) throw new Error(`crg の版が一致しません: ${versionOutput}`);
+  crgVersion = version;
+  process.stderr.write(`[crg 構築] ${repository.name} (${version})\n`);
+  runCrg(["build", "--repo", repository.root, "--data-dir", crg.dataDir], crg, "build.stderr.log");
+  const db = new Database(path.join(crg.dataDir, "graph.db"), { readonly: true, fileMustExist: true });
+  try {
+    const { files } = db.prepare(
+      "SELECT COUNT(*) AS files FROM nodes WHERE kind = 'File' AND (file_path LIKE '%.ts' OR file_path LIKE '%.tsx')"
+    ).get();
+    if (files === 0) throw new Error(`crg に TypeScript の File ノードがありません: ${repository.name}`);
+  } finally {
+    db.close();
+  }
+  return crg;
+}
+
+function crgPrediction(root, origin, depth, crg) {
+  if (!origin) throw new Error("crg impact の origin が空です");
+  const originPath = path.join(root, origin);
+  const result = JSON.parse(runCrg([
+    "impact", "--repo", root, "--files", originPath, "--depth", String(depth), "--max-results", "1000000",
+  ], crg, "impact.stderr.log"));
+  if (result.status !== "ok" || result.truncated !== false) {
+    throw new Error(`crg impact が正常終了していません: ${JSON.stringify(result)}`);
+  }
+  if (!Array.isArray(result.changed_nodes) || !Array.isArray(result.impacted_files)) {
+    throw new Error("crg impact の JSON が期待する配列を持ちません");
+  }
+  if (!result.changed_nodes.every((node) => node.file_path === originPath)) {
+    throw new Error(`crg impact の起点が一致しません: ${originPath}`);
+  }
+  return new Set(result.impacted_files
+    .filter((file) => isInside(root, file))
+    .map((file) => path.relative(root, file).split(path.sep).join("/"))
+    .filter((file) => file !== origin)
+    .sort());
+}
+
+function measureCoverage(db, crgDb, root, trackedFiles) {
+  const tsFiles = new Set(db.prepare("SELECT file FROM nodes WHERE kind IN ('file', 'test')").all().map((row) => row.file));
+  const crgFiles = new Set(crgDb.prepare("SELECT file_path FROM nodes WHERE kind = 'File'").all()
+    .map((row) => path.relative(root, row.file_path).split(path.sep).join("/")));
+  return {
+    trackedFiles: trackedFiles.size,
+    tsReviewGraph: [...trackedFiles].filter((file) => tsFiles.has(file)).length,
+    codeReviewGraph: [...trackedFiles].filter((file) => crgFiles.has(file)).length,
+  };
+}
+
+function workspacePackages(root) {
+  // YAML の glob 解釈は pnpm に任せ、新しい YAML parser 依存を増やさない。
+  if (existsSync(path.join(root, "pnpm-workspace.yaml"))) {
+    const packages = JSON.parse(execFileSync("pnpm", ["--dir", root, "list", "--recursive", "--depth", "-1", "--json"], {
+      encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
+    }));
+    return {
+      manifest: "pnpm-workspace.yaml",
+      names: [...new Set(packages.filter((pkg) => path.resolve(pkg.path) !== root).map((pkg) => pkg.name))].sort(),
+    };
+  }
+  const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
+  const patterns = Array.isArray(manifest.workspaces) ? manifest.workspaces : manifest.workspaces?.packages;
+  if (!Array.isArray(patterns)) throw new Error(`workspace 定義がありません: ${root}`);
+  const files = new Project().getFileSystem().globSync(patterns.map((pattern) => {
+    const negative = pattern.startsWith("!");
+    return `${negative ? "!" : ""}${path.join(root, negative ? pattern.slice(1) : pattern, "package.json")}`;
+  }));
+  return {
+    manifest: "package.json#workspaces",
+    names: [...new Set(files.map((file) => JSON.parse(readFileSync(file, "utf8")).name))].sort(),
+  };
+}
+
+function measureWorkspaceImports(db, crgDb, root) {
+  const packages = workspacePackages(root);
+  if (packages.names.some((name) => typeof name !== "string" || name === "")) {
+    throw new Error(`workspace package 名が不正です: ${root}`);
+  }
+  const unresolved = crgDb.prepare("SELECT file_path, target_qualified FROM edges WHERE kind = 'IMPORTS_FROM'").all()
+    .filter((row) => /\.tsx?$/.test(row.file_path) && packages.names.some(
+      (name) => row.target_qualified === name || row.target_qualified.startsWith(`${name}/`)
+    ));
+  const sources = new Set(unresolved.map((row) => path.relative(root, row.file_path).split(path.sep).join("/")));
+  const resolved = db.prepare(`SELECT source.file AS source_file, target.file AS target_file
+    FROM edges JOIN nodes source ON source.id = edges.source_id
+    JOIN nodes target ON target.id = edges.target_id WHERE edges.kind = 'IMPORTS_FROM'`).all()
+    .filter((row) => sources.has(row.source_file) && isProjectSourceFile(root, path.resolve(root, row.target_file)));
+  return {
+    ...packages,
+    unresolvedCodeReviewGraph: unresolved.length,
+    sourceFiles: sources.size,
+    resolvedTsReviewGraph: resolved.length,
+  };
+}
+
+function sumFields(key, fields) {
+  return Object.fromEntries(fields.map((field) => [field,
+    Object.values(repositoryResults).reduce((sum, result) => sum + result[key][field], 0),
+  ]));
+}
+
 const { repositories, outDir } = parseArgs(process.argv.slice(2));
-const safeOutDir = assertSafeOutputDirectory(
-  outDir,
-  repositories.map((repository) => repository.root)
-);
+const protectedRoots = repositories.map((repository) => repository.root);
+const userCrgHome = path.join(homedir(), ".code-review-graph");
+protectedRoots.push(userCrgHome);
+const safeOutDir = assertSafeOutputDirectory(outDir, protectedRoots);
+for (const repository of repositories) {
+  assertRepositoryUnchanged(repository.root);
+  assertSafeCrgPaths(safeOutDir, repository.name, protectedRoots);
+}
 mkdirSync(safeOutDir, { recursive: true });
 
 const repositoryResults = Object.create(null);
 const allObservations = [];
 for (const repository of repositories) {
-  const { result, observations } = benchmarkRepository(repository, safeOutDir);
+  const { result, observations } = benchmarkRepository(repository, safeOutDir, protectedRoots);
   repositoryResults[repository.name] = result;
   allObservations.push(...observations);
 }
@@ -557,7 +744,14 @@ const totalImports = Object.values(repositoryResults).reduce(
 );
 
 const output = {
-  schemaVersion: 1,
+  schemaVersion: 2,
+  codeReviewGraph: {
+    version: crgVersion,
+    depths: COMPARISON_DEPTHS,
+    maxResults: 1000000,
+    parserLoadTimeoutSeconds: 120,
+    home: path.join(safeOutDir, "crg-home"),
+  },
   filter: {
     nonMerge: true,
     since: SINCE,
@@ -572,6 +766,10 @@ const output = {
   repositories: repositoryResults,
   overall: {
     ...summarizeObservations(allObservations),
+    coverage: sumFields("coverage", ["trackedFiles", "tsReviewGraph", "codeReviewGraph"]),
+    workspaceImports: sumFields("workspaceImports", [
+      "unresolvedCodeReviewGraph", "sourceFiles", "resolvedTsReviewGraph",
+    ]),
     nonRelativeImports: {
       ...totalImports,
       ratioAmongResolvedProjectInternal: rounded(
@@ -583,4 +781,5 @@ const output = {
   },
 };
 
+for (const repository of repositories) assertRepositoryUnchanged(repository.root);
 process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);

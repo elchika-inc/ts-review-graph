@@ -6,6 +6,7 @@ import { afterEach, test } from "node:test";
 
 import {
   assertAbsoluteOutputDirectory,
+  assertSafeCrgPaths,
   assertSafeDatabasePath,
   assertSafeOutputDirectory,
   validateRepositoryName,
@@ -83,5 +84,34 @@ test("DB leaf の symlink が対象 repository 内を指す場合は拒否する
   assert.throws(
     () => assertSafeDatabasePath(path.join(output, "repo.db"), [repository]),
     /symlink/
+  );
+});
+
+test("crg home・data-dir・付随ファイルの symlink を拒否する", () => {
+  const parent = makeTemporaryDirectory();
+  const repository = path.join(parent, "repository");
+  const output = path.join(parent, "scratch");
+  mkdirSync(repository);
+  mkdirSync(output);
+  for (const relative of ["crg-home", "crg/repo", "crg-home/registry.json", "crg/repo/graph.db-wal"]) {
+    const link = path.join(output, relative);
+    mkdirSync(path.dirname(link), { recursive: true });
+    symlinkSync(repository, link);
+    assert.throws(() => assertSafeCrgPaths(output, "repo", [repository]), /symlink|repository の外側/);
+    rmSync(link);
+  }
+  assert.throws(() => assertSafeCrgPaths(repository, "repo", [repository]), /repository の外側/);
+  assert.deepEqual(assertSafeCrgPaths(output, "repo", [repository]), {
+    home: path.join(output, "crg-home"),
+    dataDir: path.join(output, "crg", "repo"),
+  });
+});
+
+test("まだ存在しない利用者 home も保護対象として扱う", () => {
+  const parent = makeTemporaryDirectory();
+  const home = path.join(parent, ".code-review-graph");
+  assert.throws(
+    () => assertSafeCrgPaths(path.join(home, "scratch"), "repo", [home]),
+    /repository の外側/
   );
 });
